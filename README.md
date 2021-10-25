@@ -1,1 +1,1 @@
-# gnmm
+# Graph networks for mechanical metamaterials
