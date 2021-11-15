@@ -1,0 +1,8 @@
+# Configuration file specifying materials parameters.
+
+# Imports of modules to get access to their configurables.
+# import src.beam
+# import src.exp_gin
+
+c1 = 0.
+func.c1 = %c1
