@@ -9,7 +9,6 @@ import numpy as onp
 import shutil
 import os
 import glob
-import mshr
 from src.arguments import args
 import datetime
 from sklearn.gaussian_process import GaussianProcessRegressor
@@ -25,7 +24,8 @@ def show_energy(x1, x2, x3, out):
     fig.colorbar(img)
 
 
-def load_data(file_path):
+def load_data():
+    file_path = f"data/{args.shape_tag}/numpy/energy_{args.num_samples}_{args.case_id}"
     xy_file = f"{file_path}/data_xy.npy"
 
     if os.path.isfile(xy_file):
@@ -42,7 +42,7 @@ def load_data(file_path):
 
 
 def inspect_data():
-    data = load_data(f"data/numpy/energy_{args.num_samples}_{args.case_id}")
+    data = load_data()
     show_energy(data[:, 0], data[:, 1], data[:, 2],  data[:, 3])
 
 
@@ -129,7 +129,7 @@ def evaluate_test_errors(test_data, preds):
 
 
 def mlp_surrogate():
-    data = load_data(f"data/numpy/energy_{args.num_samples}_{args.case_id}")
+    data = load_data()
     train_data, test_data, train_loader, test_loader = shuffle_data(data)    
     output_shape, params = init_random_params(jax.random.PRNGKey(0), (-1, args.input_size))
     opt_state = opt_init(params)
@@ -153,7 +153,7 @@ def mlp_surrogate():
 
 
 def sklearn_gpr_surrogate():
-    data = load_data(f"data/numpy/energy_{args.num_samples}_{args.case_id}")
+    data = load_data()
     train_data, test_data, train_loader, test_loader = shuffle_data(data)
     kernel = C(1.0, (1e-3, 1e3)) * RBF(10, (1e-2, 1e2))
     gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=9)
@@ -164,7 +164,7 @@ def sklearn_gpr_surrogate():
 
 
 def jax_gpr_surrogate(train):
-    data = load_data(f"data/numpy/energy_{args.num_samples}_{args.case_id}")
+    data = load_data()
     train_data, test_data, train_loader, test_loader = shuffle_data(data)
     x = train_data[:, :-1]
     y = train_data[:, -1]
@@ -248,6 +248,7 @@ def show_contours():
 def main():
     args.case_id = 'poreB'
     args.num_samples = 1000
+    args.shape_tag = 'beam'
     # jax_gpr_surrogate(train=True)
     # sklearn_gpr_surrogate()
     # mlp_surrogate()

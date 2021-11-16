@@ -33,8 +33,6 @@ def prepare(ys):
     return xs, bars
 
 
-
-
 def get_line(sender_ref_x, receiver_ref_x, sender_crt_x, receiver_crt_x, sender_q, receiver_q):
     sender_u = rotate_vector(sender_q, receiver_ref_x - sender_ref_x)
     receiver_u = rotate_vector(receiver_q, receiver_ref_x - sender_ref_x)
@@ -62,39 +60,6 @@ def get_line(sender_ref_x, receiver_ref_x, sender_crt_x, receiver_crt_x, sender_
     lines_start = lines_x[:-1]
     lines_end = lines_x[1:]
     return lines_start, lines_end
-
-
-# def get_line(sender_ref_x, receiver_ref_x, sender_crt_x, receiver_crt_x, sender_q, receiver_q):
-#     sender_u = rotate_vector(sender_q, receiver_ref_x - sender_ref_x)
-#     receiver_u = rotate_vector(receiver_q, receiver_ref_x - sender_ref_x)
-
-#     A_quadratic = np.array([[1., 0., 0., 0., 0., 0.],
-#                             [1., 1., 1., 0., 0., 0.],
-#                             [0., sender_u[1], 0., 0., -sender_u[0], 0.],
-#                             [0., 0., 0., 1., 0., 0.],
-#                             [0., 0., 0., 1., 1., 1.],
-#                             [0., receiver_u[1], 2.*receiver_u[1], 0., -receiver_u[0], -2*receiver_u[0]]])
-
-#     A_linear = np.array([[1., 0., 0., 0., 0., 0.],
-#                          [1., 1., 1., 0., 0., 0.],
-#                          [0., 0., 1., 0., 0., 0.],
-#                          [0., 0., 0., 1., 0., 0.],
-#                          [0., 0., 0., 1., 1., 1.],
-#                          [0., 0., 0., 0., 0., 1.]])
-
-#     A = np.where(np.absolute(np.cross(sender_u, receiver_u)) > 1e-5, A_quadratic, A_linear)
-
-#     rhs = np.array([sender_crt_x[0], receiver_crt_x[0], 0., sender_crt_x[1], receiver_crt_x[1], 0.])
-#     coeff = np.linalg.solve(A, rhs)
-#     num_lines_per_edge = 4
-#     t = np.linspace(0., 1., num_lines_per_edge + 1)
-#     a0, a1, a2, b0, b1, b2 = coeff
-#     lines_x0 = a0 + a1*t + a2*t**2
-#     lines_x1 = b0 + b1*t + b2*t**2
-#     lines_x = np.stack((lines_x0, lines_x1)).T
-#     lines_start = lines_x[:-1]
-#     lines_end = lines_x[1:]
-#     return lines_start, lines_end
 
 
 get_lines = jax.jit(jax.vmap(get_line, in_axes=(0, 0, 0, 0, 0, 0), out_axes=(0, 0)))

@@ -41,7 +41,7 @@ def leapfrog(state, t_crt, f, *diff_args):
     return (y_crt, t_crt), y_crt
 
 
-def activation(alpha):
+def bc_activation(alpha):
     coef = 10
     return np.where(alpha < 1./coef, coef*alpha, 1.)
 
@@ -60,7 +60,7 @@ def odeint(stepper, bcs, f, y0, ts, *diff_args):
     for (i, t_crt) in enumerate(ts[1:]):
 
         bc_inds, bc_vals = bcs
-        bc_vals = (1 - activation(ts[i] / ts[-1]) * 0.1) * bc_vals
+        bc_vals = (1 - bc_activation(ts[i + 1] / ts[-1]) * 0.1) * bc_vals
 
         state, y = stepper_partial(state, t_crt)
         if i % 20 == 0:
@@ -116,9 +116,12 @@ def build_graph():
     graph = jraph.GraphsTuple(nodes=node_features, edges={}, senders=senders, receivers=receivers,
         n_node=n_node, n_edge=n_edge, globals={})
 
-    # bc_nodes = [0, 1, 2, 3, 12, 13, 14, 15] + 
+    # bc_nodes = [i for i in range(n_col)] + [int(n_node - i - 1) for i in range(n_col)]
+    # bc_inds = jax.ops.index[bc_nodes*2, [1]*len(bc_nodes) + [4]*len(bc_nodes)]
+
     bc_nodes = [i for i in range(n_col)] + [int(n_node - i - 1) for i in range(n_col)]
-    bc_inds = jax.ops.index[bc_nodes*2, [1]*len(bc_nodes) + [4]*len(bc_nodes)]
+    bc_inds = jax.ops.index[bc_nodes, [1]*len(bc_nodes)]
+
     bc_vals = ini_state[bc_inds]
     bcs = (bc_inds, bc_vals)
 
