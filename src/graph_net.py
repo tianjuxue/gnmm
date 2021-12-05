@@ -42,6 +42,7 @@ def leapfrog(state, t_crt, f, *diff_args):
 
 
 def bc_activation(alpha):
+    # coef = 10
     coef = 10
     return np.where(alpha < 1./coef, coef*alpha, 1.)
 
@@ -60,8 +61,8 @@ def odeint(stepper, bcs, f, y0, ts, *diff_args):
     for (i, t_crt) in enumerate(ts[1:]):
 
         bc_inds, bc_vals = bcs
-        bc_vals = (1 - bc_activation(ts[i + 1] / ts[-1]) * 0.1) * bc_vals
-
+        # bc_vals = (1 - bc_activation(ts[i + 1] / ts[-1]) * 0.1) * bc_vals
+        bc_vals = (1 - bc_activation(ts[i + 1] / ts[-1]) * 0.05) * bc_vals
         state, y = stepper_partial(state, t_crt)
         if i % 20 == 0:
             print(f"step {i}")
@@ -77,6 +78,9 @@ def build_graph():
     L0 = args.L0
     n_row = 16
     n_col = 16
+    # n_row = 5
+    # n_col = 5
+
     n_node = np.array([n_row*n_col])
     n_edge = 2 * np.array([(n_row - 1)*n_col + (n_col - 1)*n_row])
 
@@ -183,13 +187,14 @@ def hamiltonian(graph):
 
     def state_rhs(y, t, *diff_args):
         x, q, v, w = unpack_state(y)
-        damping = 1e-1
+        # damping = 1e-1
+        damping = 1e-3
         grads = grad_hamiltonian(y)
         mass = graph.nodes["mass"]
         inertia = graph.nodes["inertia"]
 
-        v_rhs = (-damping * v - grads[:, :2]) / mass[:, None]
-        w_rhs = (-damping * w - grads[:, 2:3]) / inertia[:, None]
+        v_rhs = (-damping * v - grads[:, :2]) / mass[:, None] / args.density
+        w_rhs = (-damping * w - grads[:, 2:3]) / inertia[:, None] / args.density
 
         rhs = np.hstack((np.zeros(grads[:, 3:].shape), v_rhs, w_rhs))
         return rhs
@@ -202,15 +207,19 @@ def hamiltonian(graph):
 
 
 def main():
+    args.shape_tag = 'beam'
     args.case_id = 'poreA'
     args.num_samples = 1000
+    args.resolution = 10
+    args.path_bounds = f'data/numpy/{args.shape_tag}/bounds.npy'
 
     graph, ini_state, bcs = build_graph()
     compute_hamiltonian, state_rhs = hamiltonian(graph)
     vmap_hamitonian = jax.jit(jax.vmap(compute_hamiltonian))
 
-    dt = 1e-3
-    # ts = np.arange(0, 20001*dt, dt)
+    # dt = 1e-3
+    # ts = np.arange(0, 1001*dt, dt)
+    dt = 1e-4
     ts = np.arange(0, 10001*dt, dt)
     ys = odeint(leapfrog, bcs, state_rhs, ini_state, ts)
 

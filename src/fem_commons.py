@@ -82,3 +82,4 @@ def NeoHookeanEnergy(u):
               (bulk_mod / 2) * (J - 1)**2) 
     first_pk_stress = fe.diff(energy, F)
     return energy, first_pk_stress
+

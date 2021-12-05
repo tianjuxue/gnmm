@@ -7,6 +7,7 @@ from src.arguments import args
 from celluloid import Camera
 from matplotlib import collections  as mc
 import time
+import meshio
 # plt.style.use('seaborn-pastel')
 
 
@@ -19,18 +20,6 @@ def rotate_vector(theta, vector):
     return np.dot(rot_mat, vector)
 
 rotate_vector_thetas = jax.vmap(jax.vmap(jax.vmap(rotate_vector, in_axes=(0, None)), in_axes=(0, None)), in_axes=(None, 0))
-
-
-def prepare(ys):
-    xs = ys[:, :, :2]
-    qs = ys[:, :, 2]
-
-    L0 = args.L0
-    bar_len = 0.5*L0
-    bar = np.array([[bar_len, 0], [0, bar_len], [-bar_len, 0], [0, -bar_len]])
-    bars = rotate_vector_thetas(qs, bar)
-
-    return xs, bars
 
 
 def get_line(sender_ref_x, receiver_ref_x, sender_crt_x, receiver_crt_x, sender_q, receiver_q):
@@ -46,8 +35,7 @@ def get_line(sender_ref_x, receiver_ref_x, sender_crt_x, receiver_crt_x, sender_
                   [-2*np.pi*np.sin(theta)*receiver_u[1] - 2*np.pi*np.cos(theta)*receiver_u[0], 
                     np.pi*np.sin(theta)*receiver_u[1] + np.pi*np.cos(theta)*receiver_u[0]]])
 
-    rhs = np.array([-crt_arm[0]*sender_u[1] + crt_arm[1]*sender_u[0], -crt_arm[0]*receiver_u[1] + crt_arm[1]*receiver_u[0] ])
- 
+    rhs = np.array([-crt_arm[0]*sender_u[1] + crt_arm[1]*sender_u[0], -crt_arm[0]*receiver_u[1] + crt_arm[1]*receiver_u[0]])
     c, d = np.linalg.solve(A, rhs)
 
     num_lines_per_edge = 4
@@ -113,41 +101,6 @@ def plot_dynamics(ys, graph):
     anim.save(f'data/mp4/test_{args.case_id}.mp4', writer='ffmpeg', dpi=300)
 
 
-# def plot_dynamics(ys, graph):
-#     L0 = args.L0
- 
-#     xs, bars = prepare(ys)
-#     xs_start = np.repeat(xs[None, :], len(bars), axis=0)
-#     assert xs_start.shape == bars.shape, f"xs_start.shape = {xs_start.shape}, bars.shape = {bars.shape}"
-#     xs_end = xs_start + bars
-
-#     fig = plt.figure(figsize=(8, 8))
-#     ax = fig.add_subplot(111)
-
-#     plt.xlim(-L0, args.n_col * L0)
-#     plt.ylim(-L0, args.n_row * L0)
-#     ax.set_aspect('equal', adjustable='box')
-
-#     camera = Camera(fig)
-
-#     for i in range(len(ys)):
-#         if i % 20 == 0:
-#             print(f"i = {i}")
-
-#         starts = xs_start[:, i, :, :].reshape(-1, 2)
-#         ends = xs_end[:, i, :, :].reshape(-1, 2)
-#         lines = np.transpose(np.stack((starts, ends)), axes=(1, 0, 2))
-#         lc = mc.LineCollection(lines, colors='black',  linewidths=2)
-#         ax.add_collection(lc)
-
-#         camera.snap()
-
-#     anim = camera.animate(interval=20)
-
-#     anim.save(f'data/mp4/test_{args.case_id}.mp4', writer='ffmpeg', dpi=300)
-
-
-
 def plot_energy(energy, file_path):
     plt.figure(num=10, figsize=(6, 6))
     plt.plot(np.arange(1, len(energy) + 1, 1), energy, marker='o',  markersize=2, linestyle="-", linewidth=1, color='blue')
@@ -165,5 +118,15 @@ def walltime(func):
     return wrapper
 
 
+
+###########################################################################
+# output to stl files for 3D printing
+
+def output_stl():
+    mesh = meshio.read(f'data/pvd/meshes/dns/poreA_mesh000000.vtu')
+    mesh.write(f'data/stl/dns.stl')
+
+
 if __name__ == '__main__':
-    plot_dynamics(None)
+    # plot_dynamics(None)
+    output_stl()

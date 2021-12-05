@@ -92,13 +92,13 @@ def train_scipy(params, x, y):
         der_val, _ = ravel_pytree(der_val)
         return onp.array(der_val, order='F', dtype=onp.float64)
 
-    bounds = ((1e-3, 1), (0.1, 1.), (8*1e-6, 8*1e-6))
+    bounds = ((1e-3, 10.), (0.01, 10.), (3*1e-4, 3*1e-4))
     # bounds = ((-10., 1.), (-10., 1.), (-10., -1.))
     objective.counter = 0
     options = {'maxiter': 1000, 'disp': True}  # CG or L-BFGS-B or Newton-CG or SLSQP or trust-constr
     res = opt.minimize(fun=objective,
                        x0=params_ini,
-                       method='L-BFGS-B',
+                       method='SLSQP',
                        jac=derivative,
                        bounds=bounds,
                        callback=None,

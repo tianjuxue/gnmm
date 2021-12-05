@@ -28,6 +28,8 @@ parser.add_argument('--porosity', type=float, default=0.6)
 parser.add_argument('--L0', type=float, default=0.5)
 parser.add_argument('--young_modulus', type=float, default=100.)
 parser.add_argument('--poisson_ratio', type=float, default=0.3)
+parser.add_argument('--density', type=float, default=1e-3)
+parser.add_argument('--overwrite_mesh', default=False)
 
 parser.add_argument('--activation', choices=['tanh', 'selu', 'relu', 'sigmoid', 'softplus'], default='relu')
 parser.add_argument('--width_hidden', type=int, default=128)
