@@ -8,7 +8,7 @@ from celluloid import Camera
 from matplotlib import collections  as mc
 import time
 import meshio
-# plt.style.use('seaborn-pastel')
+from src.fem_commons import *
 
 
 def angle_to_rot_mat(theta):
@@ -19,10 +19,10 @@ def rotate_vector(theta, vector):
     rot_mat = angle_to_rot_mat(theta)
     return np.dot(rot_mat, vector)
 
-rotate_vector_thetas = jax.vmap(jax.vmap(jax.vmap(rotate_vector, in_axes=(0, None)), in_axes=(0, None)), in_axes=(None, 0))
+# rotate_vector_thetas = jax.vmap(jax.vmap(jax.vmap(rotate_vector, in_axes=(0, None)), in_axes=(0, None)), in_axes=(None, 0))
 
 
-def get_line(sender_ref_x, receiver_ref_x, sender_crt_x, receiver_crt_x, sender_q, receiver_q):
+def get_edge_line(sender_ref_x, receiver_ref_x, sender_crt_x, receiver_crt_x, sender_q, receiver_q):
     sender_u = rotate_vector(sender_q, receiver_ref_x - sender_ref_x)
     receiver_u = rotate_vector(receiver_q, receiver_ref_x - sender_ref_x)
 
@@ -50,63 +50,148 @@ def get_line(sender_ref_x, receiver_ref_x, sender_crt_x, receiver_crt_x, sender_
     return lines_start, lines_end
 
 
-get_lines = jax.jit(jax.vmap(get_line, in_axes=(0, 0, 0, 0, 0, 0), out_axes=(0, 0)))
+get_edge_lines = jax.jit(jax.vmap(get_edge_line, in_axes=(0, 0, 0, 0, 0, 0), out_axes=(0, 0)))
 
 
-def plot_dynamics(ys, graph):
-    L0 = args.L0
- 
-    fig = plt.figure(figsize=(8, 8))
-    ax = fig.add_subplot(111)
+def get_cross_line(crt_x, q, L0):
+    bar1 = np.array([0.38*L0, 0.])
+    bar2 = np.array([0., 0.38*L0])
+    start1 = crt_x - rotate_vector(q, bar1)
+    start2 = crt_x - rotate_vector(q, bar2)
+    end1 = crt_x + rotate_vector(q, bar1)
+    end2 = crt_x + rotate_vector(q, bar2)
+    return np.stack((start1, start2)), np.stack((end1, end2))
 
-    plt.xlim(-L0, args.n_col * L0)
-    plt.ylim(-L0, args.n_row * L0)
+get_cross_lines = jax.jit(jax.vmap(get_cross_line, in_axes=(0, 0, None), out_axes=(0, 0)))
+
+
+def get_unique(senders, receivers):
+    '''
+    For plotting purposes, we remove the duplicated pairs between
+    senders and receivers.
+    '''
+    senders = list(senders)
+    receivers = list(receivers)
+    for i in range(len(senders)):
+        if senders[i] > receivers[i]:
+            tmp = senders[i]
+            senders[i] = receivers[i]
+            receivers[i] = tmp
+
+    combined = onp.array([senders, receivers]).T 
+    combined_unique = onp.unique(combined, axis=0)
+    senders_unique, receivers_unique = combined_unique.T
+    return np.array(senders_unique), np.array(receivers_unique)
+
+
+def process_lines(starts, ends):
+    starts, ends = starts.reshape(-1, 2), ends.reshape(-1, 2)
+    lines = np.transpose(np.stack((starts, ends)), axes=(1, 0, 2))
+    return lines
+
+
+def ax_add_helper(ax, edge_lines, cross_lines):
+    edge_lc = mc.LineCollection(edge_lines, colors='black',  linewidths=1)
+    ax.add_collection(edge_lc)
+    cross_lc = mc.LineCollection(cross_lines, colors='grey',  linewidths=3)
+    ax.add_collection(cross_lc)
+
+
+def ax_set_limits(ax, xlim, ylim):
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
     ax.set_aspect('equal', adjustable='box')
+    ax.axis('off')
 
-    camera = Camera(fig)
 
-    sender_ref_xs = graph.nodes['ref_state'][graph.senders][:, :2]
-    receiver_ref_xs = graph.nodes['ref_state'][graph.receivers][:, :2]
+def plot_dynamics(ys, graph, gn_n_cols, gn_n_rows, limit_ratio_x=0.24, limit_ratio_y=0.24, save_frames=None):
+    L0 = args.L0
+
+    xlim = (-limit_ratio_x*(gn_n_cols - 1)*L0, (1 + limit_ratio_x)*(gn_n_cols - 1)*L0)
+    ylim = (-limit_ratio_y*(gn_n_rows - 1)*L0, (1 + limit_ratio_y)*(gn_n_rows - 1)*L0)
+
+    fig_movie, ax_movie = plt.subplots(figsize=(xlim[1]-xlim[0], ylim[1]-ylim[0]))
+    ax_set_limits(ax_movie, xlim, ylim)
+
+    camera = Camera(fig_movie)
+    senders, receivers = get_unique(graph.senders, graph.receivers)
+    sender_ref_xs = graph.nodes['ref_state'][senders][:, :2]
+    receiver_ref_xs = graph.nodes['ref_state'][receivers][:, :2]
 
     for i in range(len(ys)):
         if i % 20 == 0:
             print(f"i = {i}")
 
         y = ys[i]
+        sender_crt_xs = y[senders][:, :2]
+        receiver_crt_xs = y[receivers][:, :2]
+        sender_qs = y[senders][:, 2]
+        receiver_qs = y[receivers][:, 2]
+        edge_starts, edge_ends = get_edge_lines(sender_ref_xs, receiver_ref_xs, sender_crt_xs, receiver_crt_xs, sender_qs, receiver_qs)
+        edge_lines = process_lines(edge_starts, edge_ends)
 
-        sender_crt_xs = y[graph.senders][:, :2]
-        receiver_crt_xs = y[graph.receivers][:, :2]
-        sender_qs = y[graph.senders][:, 2]
-        receiver_qs = y[graph.receivers][:, 2]
+        crt_xs = y[:, :2]
+        qs = y[:, 2]
+        cross_starts, cross_ends = get_cross_lines(crt_xs, qs, L0)
+        cross_lines = process_lines(cross_starts, cross_ends)
 
-        starts, ends = get_lines(sender_ref_xs, receiver_ref_xs, sender_crt_xs, receiver_crt_xs, sender_qs, receiver_qs)
-
-        # print(sender_ref_xs[0])
-        # print(receiver_ref_xs[0])
-        # print(starts.shape)
-        # print(starts[0])
-        # print(ends[0])
-        # exit()
-
-        starts = starts.reshape(-1, 2)
-        ends = ends.reshape(-1, 2)
-        lines = np.transpose(np.stack((starts, ends)), axes=(1, 0, 2))
-        lc = mc.LineCollection(lines, colors='black',  linewidths=2)
-        ax.add_collection(lc)
+        ax_add_helper(ax_movie, edge_lines, cross_lines)
 
         camera.snap()
 
+        if save_frames is not None:
+            if i in save_frames:
+                fig_pic, ax_pic = plt.subplots(figsize=(xlim[1]-xlim[0], ylim[1]-ylim[0]))
+                ax_set_limits(ax_pic, xlim, ylim)
+                ax_add_helper(ax_pic, edge_lines, cross_lines) 
+                fig_pic.savefig(get_file_path('pdf', ['graph', f"{args.description}_{args.pore_id}_{i:03}"]), bbox_inches='tight')
+
     anim = camera.animate(interval=20)
 
-    anim.save(f'data/mp4/test_{args.case_id}.mp4', writer='ffmpeg', dpi=300)
+    anim.save(get_file_path('mp4'), writer='ffmpeg', dpi=300)
 
 
-def plot_energy(energy, file_path):
-    plt.figure(num=10, figsize=(6, 6))
-    plt.plot(np.arange(1, len(energy) + 1, 1), energy, marker='o',  markersize=2, linestyle="-", linewidth=1, color='blue')
-    plt.xlabel("Time steps")
-    plt.ylabel("Energy")
-    plt.savefig(file_path)
+def plot_energy(ts, hamiltonians, kinetic_energies):
+    # plt.figure(num=10, figsize=(6, 6))
+    assert len(hamiltonians) == len(kinetic_energies) and len(ts) == len(hamiltonians), f"{len(hamiltonians)}, {len(kinetic_energies)} {len(ts)}"
+    potential_energies = hamiltonians - kinetic_energies
+    step = (len(ts) - 1) // 20
+    plt.figure()
+    plt.plot(ts[::step], hamiltonians[::step], marker='o',  markersize=4, linestyle="-", linewidth=1, color='black', label='total')
+    plt.plot(ts[::step], kinetic_energies[::step], marker='o',  markersize=4, linestyle="-", linewidth=1, color='red', label='kinetic')
+    plt.plot(ts[::step], potential_energies[::step], marker='o',  markersize=4, linestyle="-", linewidth=1, color='blue', label='potential')    
+    plt.xlabel("time", fontsize=20)
+    plt.ylabel("energy", fontsize=20)
+    plt.tick_params(labelsize=18)
+    plt.legend(fontsize=18, frameon=False)
+    plt.savefig(get_file_path('pdf', 'energy'), bbox_inches='tight')
+
+
+def plot_disp(ts, ks):
+    assert len(ts) == len(ks), f"{len(ts), {len(ks)}}"
+    step = (len(ts) - 1) // 50
+    plt.figure()
+    plt.plot(ts[::step], ks[::step], marker='o',  markersize=2, linestyle="-", linewidth=1, color='black')
+    plt.xlabel("time", fontsize=20)
+    plt.ylabel("kinetic energy", fontsize=20)
+    plt.tick_params(labelsize=18)
+    plt.savefig(get_file_path('pdf', 'disp'), bbox_inches='tight')
+
+
+# def plot_force(hamiltonians, disps, file_path):
+#     '''
+#     This is a buggy version that doesn't consider dissipation - to be fixed
+#     '''
+#     assert len(hamiltonians) == len(disps), f"{len(hamiltonians)} not eual to {len(disps)}"
+#     disps_ = np.diff(disps)
+#     hamiltonians_ = np.diff(hamiltonians)
+#     forces = np.hstack((0., np.where(disps_ > 0., hamiltonians_/disps_, 0.)))
+#     plt.figure()
+#     plt.plot(disps, forces, marker='o',  markersize=2, linestyle="-", linewidth=1, color='black')
+#     plt.xlabel("displacement")
+#     plt.ylabel("force")
+#     plt.tick_params(labelsize=14)
+#     plt.savefig(file_path)
 
 
 def walltime(func):
@@ -128,5 +213,4 @@ def output_stl():
 
 
 if __name__ == '__main__':
-    # plot_dynamics(None)
     output_stl()

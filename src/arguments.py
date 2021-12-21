@@ -30,13 +30,17 @@ parser.add_argument('--young_modulus', type=float, default=100.)
 parser.add_argument('--poisson_ratio', type=float, default=0.3)
 parser.add_argument('--density', type=float, default=1e-3)
 parser.add_argument('--overwrite_mesh', default=False)
+parser.add_argument('--resolution', type=int, default=20)
 
 parser.add_argument('--activation', choices=['tanh', 'selu', 'relu', 'sigmoid', 'softplus'], default='relu')
 parser.add_argument('--width_hidden', type=int, default=128)
-parser.add_argument('--n_hidden', type=int, default=5)
+parser.add_argument('--n_hidden', type=int, default=4)
 parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--batch_size', type=int, default=32)
 parser.add_argument('--input_size', type=int, default=3)
+parser.add_argument('--num_samples', type=int, default=1000)
+
+parser.add_argument('--deactivated_nodes', type=list, default=[])
 
 # parser.add_argument('--verbose', help='Verbose for debug', action='store_true', default=True)
 # parser.add_argument('--gravity', type=float, default=9.8)
@@ -46,9 +50,17 @@ args = parser.parse_args()
 
 
 # Latex style plot
-# plt.rcParams.update({
-#     "text.latex.preamble": r"\usepackage{amsmath}",
-#     "text.usetex": True,
-#     "font.family": "sans-serif",
-#     "font.sans-serif": ["Helvetica"]})
+plt.rcParams.update({
+    "text.latex.preamble": r"\usepackage{amsmath}",
+    "text.usetex": True,
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Helvetica"]})
 
+
+# params = {'legend.fontsize': 'x-large',
+#           'figure.figsize': (15, 5),
+#          'axes.labelsize': 'x-large',
+#          'axes.titlesize':'x-large',
+#          'xtick.labelsize':'x-large',
+#          'ytick.labelsize':'x-large'}
+# pylab.rcParams.update(params)

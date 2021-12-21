@@ -73,7 +73,7 @@ predict = jax.jit(partial(gp, compute_marginal_likelihood=False))
 grad_fun = jax.jit(jax.grad(marginal_likelihood))
 
 
-def train_scipy(params, x, y):
+def train_scipy(params, x, y, bounds=None):
     params_ini, unravel = ravel_pytree(params)
 
     obj_vals = []
@@ -92,13 +92,11 @@ def train_scipy(params, x, y):
         der_val, _ = ravel_pytree(der_val)
         return onp.array(der_val, order='F', dtype=onp.float64)
 
-    bounds = ((1e-3, 10.), (0.01, 10.), (3*1e-4, 3*1e-4))
-    # bounds = ((-10., 1.), (-10., 1.), (-10., -1.))
     objective.counter = 0
     options = {'maxiter': 1000, 'disp': True}  # CG or L-BFGS-B or Newton-CG or SLSQP or trust-constr
     res = opt.minimize(fun=objective,
                        x0=params_ini,
-                       method='SLSQP',
+                       method='L-BFGS-B',
                        jac=derivative,
                        bounds=bounds,
                        callback=None,
@@ -109,25 +107,29 @@ def train_scipy(params, x, y):
 
 
 def example():
+    '''
+    This function is used to produce the demo figure for GPR in the manuscript.
+    '''
     # Covariance hyperparameters to be learned
     params = {"amplitude": 0.1,
               "lengthscale": 0.1,
               "noise": 1e-6}   
 
     # Create a really simple toy 1D function
-    numpts = 7
     key = random.PRNGKey(0)
-    y_fun = lambda x: np.sin(x) + 0.1 * random.normal(key, shape=(x.shape[0], 1))
-    x = (random.uniform(key, shape=(numpts, 1)) * 4.) + 1
+    y_fun = lambda x: -np.sin(x) + 0.1 * random.normal(key, shape=(x.shape[0], 1))
+    x = np.array([[0.8, 2.1, 2.5, 3.2, 4.1, 4.5]]).T
     y = y_fun(x)
     xtest = np.linspace(0, 6., 200)[:, None]
-    params = train_scipy(params, x, y)
+    bounds = ((1e-1, 1.), (1., 1e1), (1e-6, 1e-4))    
+    params = train_scipy(params, x, y, bounds)
     print(params)
     mu, var = predict(params, x, y, xtest)
     std = np.sqrt(np.diag(var))
-    plt.plot(x, y, "k.")
-    plt.plot(xtest, mu)
-    plt.fill_between(xtest.flatten(), mu.flatten() - std * 2, mu.flatten() + std * 2)
+    plt.scatter(x, y, s=60, c='red')
+    plt.plot(xtest, mu, lw=3, color='black')
+    plt.fill_between(xtest.flatten(), mu.flatten() - std * 2, mu.flatten() + std * 2, facecolor="none", edgecolor="none", alpha=0.1, color='black', linewidth=0.0)
+    plt.axis('off')
     plt.show()
 
 

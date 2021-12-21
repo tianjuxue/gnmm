@@ -16,23 +16,21 @@ def angle_to_rot_mat(theta):
     return onp.array([[onp.cos(theta), -onp.sin(theta)], [onp.sin(theta), onp.cos(theta)]])
 
 
-def compute_mass_inertia(c1, c2, case_id):
+def compute_mass_inertia():
+    c1, c2 = get_shape_params()
     L0 = args.L0
-    args.shape_tag = 'unit'
-    mesh = build_mesh(c1, c2, True)
+    mesh = build_mesh(c1, c2, 'unit', True)
     sc = fe.SpatialCoordinate(mesh)
     mass = fe.assemble(fe.Constant(1.) * fe.dx(domain=mesh))
     inertia = fe.assemble(((sc[0] - L0/2)**2 + (sc[1] - L0/2)**2) * fe.dx(domain=mesh))
-    onp.save(f"data/numpy/{args.shape_tag}/mass_{case_id}.npy", mass)
-    onp.save(f"data/numpy/{args.shape_tag}/inertia_{case_id}.npy", inertia)
+    onp.save(get_file_path('numpy', 'mass'), mass)
+    onp.save(get_file_path('numpy', 'inertia'), inertia)
     return mass, inertia
 
 
 def fem_solve(c1, c2, rot_angle_1, rot_angle_2, disp, save_data, save_sols):
     L0 = args.L0 
-    args.shape_tag = 'beam'
-    mesh = build_mesh(c1, c2, True)
-
+    mesh = build_mesh(c1, c2, 'beam', True)
     V = fe.VectorFunctionSpace(mesh, 'P', 1)
     E = fe.FunctionSpace(mesh, 'DG', 0)
     u = fe.Function(V)
@@ -99,30 +97,31 @@ def fem_solve(c1, c2, rot_angle_1, rot_angle_2, disp, save_data, save_sols):
         print(f"energy_val = {energy_val}")
         if save_sols:
             e = fe.project(energy_density, E)
-            u_vtk_file = fe.File(f'data/pvd/sols/{args.shape_tag}/{args.case_id}/u.pvd')
+            u_vtk_file = fe.File(get_file_path('pvd', ['sols', 'u']))
             u_vtk_file << u
             u.rename("u", "u")
-            e_vtk_file = fe.File(f'data/pvd/sols/{args.shape_tag}/{args.case_id}/e.pvd')
+            e_vtk_file = fe.File(get_file_path('pvd', ['sols', 'e']))
             e.rename("e", "e")
             e_vtk_file << e
 
-            xdmf_file = fe.XDMFFile(f'data/xdmf/{args.shape_tag}/{args.case_id}/u.xdmf')
+            xdmf_file = fe.XDMFFile(get_file_path('xdmf'))
             xdmf_file.parameters["functions_share_mesh"] = True
             xdmf_file.write(u, 0)
             xdmf_file.write(e, 0)
 
         if save_data:
             data_point = onp.array([c1, c2, rot_angle_1, rot_angle_2, disp, energy_val])
-            now = datetime.datetime.now().strftime('%s')
+            now = datetime.datetime.now().strftime('%s%f')
             onp.save(args.path_training_data + f'/{now}.npy', data_point)
     else:
-        print(f"dr solver not converged")
+        print(f"\n\n\ndr solver not converged\n\n\n")
 
 
-def generate_data(shape_param, bounds):
-    args.path_training_data = f'data/numpy/{args.shape_tag}/energy_sample_{args.num_samples}_resolution_{args.resolution}_{args.case_id}'
-    c1, c2 = shape_param
-    rot_bound, disp_bound = bounds
+def generate_data(bounds):
+    '''
+    TODO: use file path manager!
+    '''
+    args.path_training_data = f'data/numpy/{args.shape_tag}/energy_sample_{args.num_samples}_resolution_{args.resolution}_{args.pore_id}'
     print(f"\nDelete all existing energy data...")
     shutil.rmtree(args.path_training_data, ignore_errors=True)
     # numpy_files = glob.glob(args.path_training_data + f'/*')
@@ -130,55 +129,32 @@ def generate_data(shape_param, bounds):
     #     os.remove(f)
     os.mkdir(args.path_training_data)
 
-    # key = jax.random.PRNGKey(0)
-    # features = jax.random.uniform(key, shape=(args.num_samples, 3), minval=onp.array([[-rot_bound, -rot_bound, -disp_bound]]), 
-    #     maxval=onp.array([[rot_bound, rot_bound, disp_bound]]))
+    c1, c2 = get_shape_params()
+    rot_bound, disp_bound = bounds
     features = onp.random.uniform(low=(-rot_bound, -rot_bound, -disp_bound), high=(rot_bound, rot_bound, disp_bound), size=(args.num_samples, 3))
-
     for i, (rot_angle_1, rot_angle_2, disp) in enumerate(features):
         print(f"Generate data point {i + 1} out of {args.num_samples}")
         fem_solve(c1, c2, rot_angle_1=rot_angle_1, rot_angle_2=rot_angle_2, disp=disp, save_data=True, save_sols=False)
 
 
-# def main():
-#     args.shape_tag = 'beam' 
-#     case_ids = ['poreA', 'poreB', 'poreC', 'poreD', 'poreE']
-#     shape_params = [(0., 0.), (-0.05, 0.), (-0.1, 0.), (-0.15, 0.), (-0.2, 0.)]
-#     bounds = onp.array([1/5*onp.pi, 0.1])
-#     args.num_samples = 1000
-#     for i in range(len(case_ids)):
-#         args.case_id = case_ids[i]
-#         generate_data(shape_params[i], bounds)
-
-#     for i in range(len(case_ids)):    
-#         compute_mass_inertia(*shape_params[i], case_ids[i])
-
-#     onp.save(f'data/numpy/{args.shape_tag}/bounds.npy', bounds)
-
-
-
 def main():
     args.shape_tag = 'beam' 
-    args.resolution = 30
-    args.num_samples = 1000
-    case_ids = ['poreA', 'poreB', 'poreC', 'poreD', 'poreE', 'poreF']
-    shape_params = [(0., 0.), (-0.05, 0.), (-0.1, 0.), (-0.15, 0.), (-0.2, 0.), (-0.2, 0.2)]
+    args.num_samples = 1000      
+    pore_ids = ['poreA', 'poreB', 'poreC', 'poreD', 'poreE']
+
     bounds = onp.array([1/5*onp.pi, 0.1])
-
-    for i in range(len(case_ids)):
-        args.case_id = case_ids[i]
-        generate_data(shape_params[i], bounds)
-
-    for i in range(len(case_ids)):    
-        compute_mass_inertia(*shape_params[i], case_ids[i])
-
-    onp.save(f'data/numpy/{args.shape_tag}/bounds.npy', bounds)
+    for i in range(len(pore_ids)):
+        args.pore_id = pore_ids[i]
+        generate_data(bounds)
+        compute_mass_inertia()
+        onp.save(get_file_path('numpy', 'bounds'), bounds)
 
 
 @walltime
 def exp():
-    args.case_id = 'poreX'
-    args.porosity = 0.6
+    args.pore_id = 'poreA'
+    args.resolution = 10
+    args.pore_id = 'poreA'
     fem_solve(c1=-0., c2=0., rot_angle_1=1*1/5*onp.pi, rot_angle_2=1*1/5*onp.pi, disp=-0.1, save_data=False, save_sols=True)
     # fem_solve(c1=-0.2, c2=0.2, rot_angle_1=-1*1/5*onp.pi, rot_angle_2=1*1/5*onp.pi, disp=-0.1, save_data=False, save_sols=True)
 
