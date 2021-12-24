@@ -18,18 +18,6 @@ from functools import partial
 from src.fem_commons import *
 
 
-# def show_energy(x1, x2, x3, out):  
-#     fig = plt.figure(figsize=(8, 8))
-#     ax = plt.axes(projection="3d")
-#     img = ax.scatter3D(x1, x2, x3, c=out, alpha=0.7, marker='.', cmap=plt.hot())
-#     fig.colorbar(img)
-
-
-# def inspect_data():
-#     data = load_data()
-#     show_energy(data[:, 0], data[:, 1], data[:, 2],  data[:, 3])
-
-
 def load_data():
     file_path = get_file_path('numpy', 'data')
     xy_file = f"{file_path}/data_xy.npy"
@@ -210,7 +198,7 @@ def safe_batch_forward(batch_forward):
         xtest_norm = xtest / np.sqrt(r_square + 1e-10)[:, None]
         preds_norm = batch_forward(xtest_norm)
         result = np.where(r_square < 1., preds, preds_norm * r_square)
-        # result = result - zero_baseline
+        result = result - zero_baseline
         return result
 
     return safe_fn
@@ -224,6 +212,9 @@ def regression(surrogate_fn, train):
 
 
 def main():
+    '''
+    For debugging purpose
+    '''
     args.pore_id = 'poreA'
     args.num_samples = 1000
     args.shape_tag = 'beam'
@@ -236,12 +227,10 @@ def main():
     # batch_forward = mlp_surrogate(True, train_data, train_loader, validation_data)
     batch_forward = jax_gpr_surrogate(True, train_data, train_loader)
     evaluate_errors(validation_data, train_data, batch_forward)
-
     # show_contours(batch_forward)
 
 
 if __name__ == '__main__':
-    # inspect_data()
     main()
     # plt.show()
  

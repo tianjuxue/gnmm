@@ -48,14 +48,14 @@ def get_bcs(time_index, bcs):
     bc_inds_x = []
     bc_inds_y = []
     bc_vals = []
-    for edge_index in range(len(uv_list)):
-        if uv_list[edge_index] is not None:
-            disps, vels = uv_list[edge_index]
+    for bc_index in range(len(uv_list)):
+        if uv_list[bc_index] is not None:
+            disps, vels = uv_list[bc_index]
             bc_val_disp = disps[time_index]
             bc_val_vel = vels[time_index]
-            bc_inds_x = bc_inds_x + bc_inds_x_list[edge_index]
-            bc_inds_y = bc_inds_y + bc_inds_y_list[edge_index]
-            val_len = len(bc_inds_x_list[edge_index])//2
+            bc_inds_x = bc_inds_x + bc_inds_x_list[bc_index]
+            bc_inds_y = bc_inds_y + bc_inds_y_list[bc_index]
+            val_len = len(bc_inds_x_list[bc_index])//2
             bc_vals = bc_vals + [float(bc_val_disp)]*val_len + [float(bc_val_vel)]*val_len
 
     bc_inds = jax.ops.index[bc_inds_x, bc_inds_y]
@@ -72,8 +72,8 @@ def build_bc_inds(inds_lookup):
     x control on top edge: u and v
     y control on top edge: u and v
     '''    
-    bc_inds_x_list = [[i for i in range(args.gn_n_cols)]*2]*2 + \
-                     [[int(args.gn_n_rows*args.gn_n_cols - i - 1) for i in range(args.gn_n_cols)]*2]*2
+    bc_inds_x_list = [[i for i in range(args.gn_n_cols)]*2]*3 + \
+                     [[int(args.gn_n_rows*args.gn_n_cols - i - 1) for i in range(args.gn_n_cols)]*2]*3
 
     bc_inds_x_list = [[inds_lookup[i] for i in bc_inds_x if inds_lookup[i] != INVALID] for bc_inds_x in bc_inds_x_list]
 
@@ -81,8 +81,10 @@ def build_bc_inds(inds_lookup):
 
     bc_inds_y_list = [[0]*shapes[0] + [3]*shapes[0], 
                       [1]*shapes[1] + [4]*shapes[1],
-                      [0]*shapes[2] + [3]*shapes[2], 
-                      [1]*shapes[3] + [4]*shapes[3]] 
+                      [2]*shapes[2] + [5]*shapes[2],
+                      [0]*shapes[3] + [3]*shapes[3], 
+                      [1]*shapes[4] + [4]*shapes[4],
+                      [2]*shapes[5] + [5]*shapes[5]] 
 
     return bc_inds_x_list, bc_inds_y_list    
 
@@ -126,6 +128,8 @@ def build_graph():
         defect = (this_col, this_row) in args.deactivated_nodes
         return in_matrix and not defect
 
+    
+    # TODO: the double for-loop is slow for large size of structure - need to optimize the code
     inds_lookup = []
     valid_node_num = 0
     for row in range(gn_n_rows):
@@ -175,6 +179,7 @@ def update_graph():
     batch_forward = regression(jax_gpr_surrogate, False)
 
     def update_edge_fn(edges, senders, receivers, globals_):
+        del edges, globals_
         sender_ref_x, sender_ref_q, _, _ = unpack_state(senders["ref_state"])
         sender_crt_x, sender_crt_q, _, _ = unpack_state(senders["crt_state"])
         receiver_ref_x, receiver_ref_q, _, _ = unpack_state(receivers["ref_state"])
@@ -197,6 +202,7 @@ def update_graph():
         return {"potential_energy": potential_energy}
 
     def update_node_fn(nodes, sent_edges, received_edges, globals_):
+        del sent_edges, received_edges, globals_
         #TODO: delete unused variables
         _, _, crt_v, crt_w = unpack_state(nodes["crt_state"])
         kinetic_energy_per_node = 0.5 * args.density * nodes["mass"] * np.sum(crt_v**2, -1) + \
@@ -204,6 +210,7 @@ def update_graph():
         return {"kinetic_energy": kinetic_energy_per_node}
 
     def update_global_fn(nodes, edges, globals_):
+        del globals_
         total_kinetic_energy = nodes["kinetic_energy"]
         total_potential_energy = edges["potential_energy"]
         total_hamiltonian = total_kinetic_energy + total_potential_energy
@@ -259,64 +266,19 @@ def get_cross_energy(ys, inds):
     return ks
 
 
-###########################################################################
-# The following functions provide case studies
-# Usually, these functions should be defined outside of the gnmm library
-
-
 def simulate(uv_list, ts):
     graph, ini_state, inds_lookup = build_graph()
     bc_inds_x_list, bc_inds_y_list = build_bc_inds(inds_lookup)
     compute_kinetic_energy, compute_hamiltonian, state_rhs = hamiltonian(graph)
-    vmap_hamitonian = jax.jit(jax.vmap(compute_hamiltonian))
-    vmap_kinetic_energy = jax.jit(jax.vmap(compute_kinetic_energy))
     bcs = [bc_inds_x_list, bc_inds_y_list, uv_list, ini_state]
     ys_ = odeint(leapfrog, bcs, state_rhs, ini_state, ts)
     ys = np.vstack((ini_state[None, :], ys_))
+    vmap_hamitonian = jax.jit(jax.vmap(compute_hamiltonian))
+    vmap_kinetic_energy = jax.jit(jax.vmap(compute_kinetic_energy))
     hamitonians = vmap_hamitonian(ys)
     kinetic_energies = vmap_kinetic_energy(ys) 
     return ys, hamitonians, kinetic_energies, graph
 
-    # disps = disps[::10]
-    # plot_force(hamitonians, disps, f"data/pdf/{args.case_name}_force_disp_gn_{args.pore_id}.pdf")
-    # plot_disp(ys, point_index, f"data/pdf/{args.case_name}_point_disp_gn_{args.pore_id}.pdf")
+
  
 
-def case_study_hierarchy():
-    args.description = 'exp'
-    args.pore_id = 'poreE'
-    args.gn_n_cols = 33
-    args.gn_n_rows = 33
-    args.gn_damping = 1e-3
-    args.coef = 10
-
-    # 哭脸
-    # args.deactivated_nodes = [(5, 13), (5, 14), (5, 15), (5, 16), (5, 17), (5, 18),
-    #                      (22, 21), (22, 22), (22, 23),
-    #                      (22, 10), (22, 9), (22, 8)]
-
-    # args.deactivated_nodes = [(2, 2), (2, 6), (2, 10), (2, 14)]
-
-    # for row in range(args.gn_n_rows):
-    #     for col in range(args.gn_n_cols):
-    #         if col % 3 == 1 and row % 3 == 1:
-    #             args.deactivated_nodes.append((col, row))
-
-    dt = 1e-4
-    ts = np.arange(0, 1001*dt, dt)
-    uv_bottom_x = compute_uv_bc_vals(ts, bc_excitation_impulse, args.gn_n_rows)
-    uv_bottom_y = compute_uv_bc_vals(ts, bc_excitation_fixed, args.gn_n_rows)    
-    uv_top_x = compute_uv_bc_vals(ts, bc_excitation_impulse, args.gn_n_rows)
-    uv_top_y = compute_uv_bc_vals(ts, bc_excitation_fixed, args.gn_n_rows)
-    # uv_list = [uv_bottom_x, uv_bottom_y, uv_top_x, uv_top_y]
-    uv_list = [None, None, uv_top_x, uv_top_y]
-
-    disps, _ = compute_uv_bc_vals(ts, bc_excitation_impulse, args.gn_n_rows)
-    simulate(uv_list, ts, np.absolute(disps), 0)
-
-
-
-if __name__ == '__main__':
-    # case_study_hierarchy()
-    case_study_wave()
-    # plt.show()

@@ -42,10 +42,6 @@ parser.add_argument('--num_samples', type=int, default=1000)
 
 parser.add_argument('--deactivated_nodes', type=list, default=[])
 
-# parser.add_argument('--verbose', help='Verbose for debug', action='store_true', default=True)
-# parser.add_argument('--gravity', type=float, default=9.8)
-# parser.add_argument('--dir', type=str, default='data')
-# parser.add_argument('--dim', type=int, default=3)
 args = parser.parse_args()
 
 

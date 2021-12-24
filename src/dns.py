@@ -52,7 +52,9 @@ def build_mesh_and_boundaries_bulk():
     L0 = args.L0 
 
     # diagonal = 'crossed'
-    mesh = fe.RectangleMesh(fe.Point(0., 0.), fe.Point(args.dns_n_cols * L0, args.dns_n_rows * L0), 40, 40)
+    bulk_resolution = 1
+    mesh = fe.RectangleMesh(fe.Point(0., 0.), fe.Point(args.bulk_n_cols * L0, args.bulk_n_rows * L0), 
+        bulk_resolution*args.bulk_n_cols, bulk_resolution*args.bulk_n_rows)
 
     class Bottom(fe.SubDomain):
         def inside(self, x, on_boundary):
@@ -60,35 +62,28 @@ def build_mesh_and_boundaries_bulk():
 
     class Top(fe.SubDomain):
         def inside(self, x, on_boundary):
-            return on_boundary and x[1] > args.dns_n_rows * L0 - 1e-8
+            return on_boundary and x[1] > args.bulk_n_rows * L0 - 1e-8
 
     class LeftCorner(fe.SubDomain):
         def inside(self, x, on_boundary):
             return on_boundary and  x[1] < 1e-8 and x[0] < 1e-8  
 
+    class Cross(fe.SubDomain):
+        def inside(self, x, on_boundary):
+           return x[1] < L0 + 1e-8
+
+    # TODO: clearly redundant code
     bottom = Bottom()
     top = Top()
     left_corner = LeftCorner()
+    cross = Cross()
 
-    return mesh, (bottom, top, left_corner)
-
-
-# def boundary_excitation_impulse(dt, t_steps, coef):
-#     ts = onp.arange(0, (t_steps + 1)*dt, dt)
-#     alpha = ts / ts[-1]
-#     bc_activation = onp.where(alpha < 1./coef, coef*alpha, 1.)
-#     disps = -0.05 * bc_activation * args.dns_n_rows * args.L0 
-#     vels = onp.hstack((0., onp.diff(disps)))
-#     return ts, disps, vels
-
-
-# def boundary_excitation_sin(dt, t_steps, coef):
-#     ts = onp.arange(0, (t_steps + 1)*dt, dt)
-#     alpha = ts / ts[-1]
-#     bc_activation = onp.where(alpha < 1./coef, onp.sin(2*onp.pi*coef*alpha), 0.)
-#     disps = -0.05 * bc_activation * args.dns_n_rows * args.L0 
-#     vels = onp.hstack((0., onp.diff(disps)))
-#     return ts, disps, vels
+    domains = fe.MeshFunction("size_t", mesh, mesh.topology().dim())
+    domains.set_all(0)
+    dx = fe.Measure('dx')(domain=mesh, subdomain_data=domains)
+    cross.mark(domains, 1)
+       
+    return mesh, (bottom, top, left_corner), dx
 
 
 def build_bcs(uv_list, uv_bcs):
@@ -108,11 +103,11 @@ def apply_bcs(time_index, uv_list, uv_loads):
             v_load.vel = vels[time_index]
 
 
-def dns_solve_implicit_euler(c1, c2, uv_list, ts):
+def dns_solve_implicit_euler(c1, c2, uv_list, ts, save_files=True):
     if args.shape_tag == 'dns':
         mesh, (bottom, top, left_corner), dx = build_mesh_and_boundaries_porous(c1, c2)
     if args.shape_tag == 'bulk':
-        mesh, (bottom, top, left_corner) = build_mesh_and_boundaries_bulk()
+        mesh, (bottom, top, left_corner), dx = build_mesh_and_boundaries_bulk()
 
     U = fe.VectorElement('CG', mesh.ufl_cell(), 1)  
     W = fe.VectorElement('CG', mesh.ufl_cell(), 1)
@@ -126,6 +121,8 @@ def dns_solve_implicit_euler(c1, c2, uv_list, ts):
     u_test, v_test = m_test
     u_crt, v_crt = fe.split(m_crt)
     u_pre, v_pre = fe.split(m_pre)
+
+    # print(len(m_crt.vector()))
 
     uv_bcs = []
     uv_loads = []
@@ -141,18 +138,17 @@ def dns_solve_implicit_euler(c1, c2, uv_list, ts):
 
     bcs = build_bcs(uv_list, uv_bcs)
 
-
     dt = float(ts[1] - ts[0])
     theta = 0.5
     u_rhs = theta*u_pre + (1 - theta)*u_crt
     v_rhs = theta*v_pre + (1 - theta)*v_crt
     strain_energy_density, PK_stress = NeoHookeanEnergy(u_rhs)
 
-    if args.damping_coeff == 0.:
+    if args.dns_damping == 0.:
         v_res = args.density * fe.dot(v_crt - v_pre, v_test) * fe.dx + dt * fe.inner(PK_stress, fe.grad(v_test)) * fe.dx
     else:
         v_res = args.density * fe.dot(v_crt - v_pre, v_test) * fe.dx + dt * fe.inner(PK_stress, fe.grad(v_test)) * fe.dx + \
-                dt * args.damping_coeff * fe.dot(v_rhs, v_test) * fe.dx       
+                dt * args.dns_damping * fe.dot(v_rhs, v_test) * fe.dx       
 
     u_res = fe.dot(u_crt - u_pre, u_test) * fe.dx - dt * fe.dot(v_rhs, u_test) * fe.dx
 
@@ -170,7 +166,7 @@ def dns_solve_implicit_euler(c1, c2, uv_list, ts):
     for i, t in enumerate(ts[1:]):
         print(f"\nStep {i}")
 
-        if i % 1 == 0:
+        if i % 1 == 0 and save_files:
             e_plot = fe.project(strain_energy_density, E)
             u_plot, v_plot = m_pre.split()
             u_plot.rename("u", "u")
@@ -197,12 +193,12 @@ def dns_solve_implicit_euler(c1, c2, uv_list, ts):
         print(f"kinetic_energy_val = {kinetic_energy_val}")
         print(f"cross_energy_val = {cross_energy_val}")
 
-    nondissipative_energies = onp.array(nondissipative_energies)
-    kinetic_energies = onp.array(kinetic_energies)
-    cross_energies = onp.array(cross_energies)
-
-    energies = onp.stack((ts, nondissipative_energies, kinetic_energies, cross_energies))
-    onp.save(get_file_path('numpy', 'energy'), energies)
+    if save_files:
+        nondissipative_energies = onp.array(nondissipative_energies)
+        kinetic_energies = onp.array(kinetic_energies)
+        cross_energies = onp.array(cross_energies)
+        energies = onp.stack((ts, nondissipative_energies, kinetic_energies, cross_energies))
+        onp.save(get_file_path('numpy', 'energy'), energies)
 
 
 def main():
@@ -216,7 +212,7 @@ def main():
     args.shape_tag = 'dns'
     args.dns_n_rows = 1
     args.dns_n_cols = 1
-    args.damping_coeff = 0.
+    args.dns_damping = 0.
     args.description = ''
     args.coef = 10
 

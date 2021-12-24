@@ -16,11 +16,17 @@ def get_file_path(file_type, keyword=None):
             return f'data/{file_type}/{args.shape_tag}/{args.pore_id}/u.xdmf'
 
     if file_type == 'pdf':
+        if keyword == 'performance' or keyword == 'S_wave':
+            return f"data/{file_type}/{keyword}.pdf"
         if args.shape_tag == 'dns':
             if keyword == 'energy' or keyword == 'disp':
                 return f"data/{file_type}/{args.shape_tag}/{keyword}/{args.description}_{args.pore_id}.pdf"
+            if hasattr(keyword, '__len__'):
+                topic, name = keyword
+                return f"data/{file_type}/{args.shape_tag}/{topic}/{name}.pdf"
         if args.shape_tag == 'bulk':
-            return f"data/{file_type}/{args.shape_tag}/energy.pdf"
+            if keyword == 'energy' or keyword == 'disp':
+                return f"data/{file_type}/{args.shape_tag}/{keyword}/{args.description}.pdf"
         if args.shape_tag == 'beam':
             if keyword == 'energy' or keyword == 'disp':
                 return f"data/{file_type}/{args.shape_tag}/{keyword}/{args.description}_{args.pore_id}.pdf"
@@ -43,12 +49,18 @@ def get_file_path(file_type, keyword=None):
         if args.shape_tag == 'dns':
             return f'data/{file_type}/{mesh_or_sol}/{args.shape_tag}/{args.pore_id}_resolution_{args.resolution}_' + \
                    f'size_{args.dns_n_cols}x{args.dns_n_rows}_description_{args.description}/{var_name}.pvd'
+        if args.shape_tag == 'bulk':
+            return f'data/{file_type}/{mesh_or_sol}/{args.shape_tag}/size_{args.bulk_n_cols}x{args.bulk_n_rows}_' + \
+                  f'description_{args.description}/{var_name}.pvd'
     
     if file_type == 'numpy':
         if args.shape_tag == 'dns':
             if keyword == 'energy':
                 return  f'data/{file_type}/{args.shape_tag}/{args.pore_id}_resolution_{args.resolution}' + \
                         f'_size_{args.dns_n_cols}x{args.dns_n_rows}_{keyword}_description_{args.description}.npy'
+            if hasattr(keyword, '__len__'):
+                topic, name = keyword
+                return f'data/{file_type}/{args.shape_tag}/{topic}_{name}.npy'
         if args.shape_tag == 'beam':
             if keyword == 'data':
                 return f'data/{file_type}/{args.shape_tag}/energy_sample_{args.num_samples}_resolution_{args.resolution}_{args.pore_id}'
@@ -58,7 +70,13 @@ def get_file_path(file_type, keyword=None):
                 return f'data/{file_type}/{args.shape_tag}/{keyword}.npy'
             if keyword == 'energy':
                 return  f'data/{file_type}/{args.shape_tag}/{args.pore_id}_resolution_{args.resolution}' + \
-                        f'_size_{args.gn_n_cols}x{args.gn_n_rows}_{keyword}_description_{args.description}.npy'            
+                        f'_size_{args.gn_n_cols}x{args.gn_n_rows}_{keyword}_description_{args.description}.npy'  
+            if hasattr(keyword, '__len__'):
+                topic, name = keyword
+                return f'data/{file_type}/{args.shape_tag}/{topic}_{name}.npy'
+        if args.shape_tag == 'bulk':
+                return  f'data/{file_type}/{args.shape_tag}/' + \
+                        f'_size_{args.bulk_n_cols}x{args.bulk_n_rows}_{keyword}_description_{args.description}.npy'  
 
     if file_type == 'pickle':
         return f"data/{file_type}/jax_{keyword}_resolution_{args.resolution}_{args.pore_id}.pkl" 
@@ -77,6 +95,11 @@ def bc_excitation_impulse(t_frac):
 
 def bc_excitation_fixed(t_frac):
     return np.zeros_like(t_frac)
+
+
+def bc_excitation_sin(t_frac):
+    T = args.T
+    return np.sin(2*np.pi/T*t_frac)
 
 
 def compute_uv_bc_vals(ts, bc_activation_fn, n_rows):

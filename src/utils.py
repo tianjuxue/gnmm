@@ -8,6 +8,8 @@ from celluloid import Camera
 from matplotlib import collections  as mc
 import time
 import meshio
+import shutil
+import os
 from src.fem_commons import *
 
 
@@ -18,8 +20,6 @@ def angle_to_rot_mat(theta):
 def rotate_vector(theta, vector):
     rot_mat = angle_to_rot_mat(theta)
     return np.dot(rot_mat, vector)
-
-# rotate_vector_thetas = jax.vmap(jax.vmap(jax.vmap(rotate_vector, in_axes=(0, None)), in_axes=(0, None)), in_axes=(None, 0))
 
 
 def get_edge_line(sender_ref_x, receiver_ref_x, sender_crt_x, receiver_crt_x, sender_q, receiver_q):
@@ -104,19 +104,22 @@ def ax_set_limits(ax, xlim, ylim):
     ax.axis('off')
 
 
-def plot_dynamics(ys, graph, gn_n_cols, gn_n_rows, limit_ratio_x=0.24, limit_ratio_y=0.24, save_frames=None):
+def plot_dynamics(ys, graph, gn_n_cols, gn_n_rows, limits=((0.24, 0.24), (0.24, 0.24)), pdf_frames=None):
+    '''
+    Save configurations of cross-spring system to local png files and convert them to an mp4 file.
+    '''
     L0 = args.L0
 
-    xlim = (-limit_ratio_x*(gn_n_cols - 1)*L0, (1 + limit_ratio_x)*(gn_n_cols - 1)*L0)
-    ylim = (-limit_ratio_y*(gn_n_rows - 1)*L0, (1 + limit_ratio_y)*(gn_n_rows - 1)*L0)
+    xlim = (-limits[0][0]*(gn_n_cols - 1)*L0, (1 + limits[0][1])*(gn_n_cols - 1)*L0)
+    ylim = (-limits[1][0]*(gn_n_rows - 1)*L0, (1 + limits[1][1])*(gn_n_rows - 1)*L0)
 
-    fig_movie, ax_movie = plt.subplots(figsize=(xlim[1]-xlim[0], ylim[1]-ylim[0]))
-    ax_set_limits(ax_movie, xlim, ylim)
-
-    camera = Camera(fig_movie)
     senders, receivers = get_unique(graph.senders, graph.receivers)
     sender_ref_xs = graph.nodes['ref_state'][senders][:, :2]
     receiver_ref_xs = graph.nodes['ref_state'][receivers][:, :2]
+
+    tmp_root_path = f'data/png/tmp/'
+    shutil.rmtree(tmp_root_path, ignore_errors=True)
+    os.mkdir(tmp_root_path)
 
     for i in range(len(ys)):
         if i % 20 == 0:
@@ -129,39 +132,41 @@ def plot_dynamics(ys, graph, gn_n_cols, gn_n_rows, limit_ratio_x=0.24, limit_rat
         receiver_qs = y[receivers][:, 2]
         edge_starts, edge_ends = get_edge_lines(sender_ref_xs, receiver_ref_xs, sender_crt_xs, receiver_crt_xs, sender_qs, receiver_qs)
         edge_lines = process_lines(edge_starts, edge_ends)
-
         crt_xs = y[:, :2]
         qs = y[:, 2]
         cross_starts, cross_ends = get_cross_lines(crt_xs, qs, L0)
         cross_lines = process_lines(cross_starts, cross_ends)
 
-        ax_add_helper(ax_movie, edge_lines, cross_lines)
+        fig, ax = plt.subplots(figsize=(xlim[1]-xlim[0], ylim[1]-ylim[0]))
+        ax_set_limits(ax, xlim, ylim)
+        ax_add_helper(ax, edge_lines, cross_lines)    
+        fig.savefig(tmp_root_path + f'{i:05}.png', bbox_inches='tight')
 
-        camera.snap()
+        if pdf_frames is not None:
+            if i in pdf_frames:
+                fig.savefig(get_file_path('pdf', ['graph', f"{args.description}_{args.pore_id}_{i:03}"]), bbox_inches='tight')
 
-        if save_frames is not None:
-            if i in save_frames:
-                fig_pic, ax_pic = plt.subplots(figsize=(xlim[1]-xlim[0], ylim[1]-ylim[0]))
-                ax_set_limits(ax_pic, xlim, ylim)
-                ax_add_helper(ax_pic, edge_lines, cross_lines) 
-                fig_pic.savefig(get_file_path('pdf', ['graph', f"{args.description}_{args.pore_id}_{i:03}"]), bbox_inches='tight')
+        plt.close(fig)
 
-    anim = camera.animate(interval=20)
-
-    anim.save(get_file_path('mp4'), writer='ffmpeg', dpi=300)
+    # The command -pix_fmt yuv420p is to ensure preview of video on Mac OS is enabled
+    # https://apple.stackexchange.com/questions/166553/why-wont-video-from-ffmpeg-show-in-quicktime-imovie-or-quick-preview
+    # The command -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" is to solve the following "not-divisible-by-2" problem
+    # https://stackoverflow.com/questions/20847674/ffmpeg-libx264-height-not-divisible-by-2
+    # -y means always overwrite
+    os.system('ffmpeg -y -framerate 25 -i data/png/tmp/%05d.png -pix_fmt yuv420p -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" ' + get_file_path('mp4'))
 
 
 def plot_energy(ts, hamiltonians, kinetic_energies):
     # plt.figure(num=10, figsize=(6, 6))
     assert len(hamiltonians) == len(kinetic_energies) and len(ts) == len(hamiltonians), f"{len(hamiltonians)}, {len(kinetic_energies)} {len(ts)}"
     potential_energies = hamiltonians - kinetic_energies
-    step = (len(ts) - 1) // 20
+    step = (len(ts) - 1) // 50
     plt.figure()
     plt.plot(ts[::step], hamiltonians[::step], marker='o',  markersize=4, linestyle="-", linewidth=1, color='black', label='total')
     plt.plot(ts[::step], kinetic_energies[::step], marker='o',  markersize=4, linestyle="-", linewidth=1, color='red', label='kinetic')
     plt.plot(ts[::step], potential_energies[::step], marker='o',  markersize=4, linestyle="-", linewidth=1, color='blue', label='potential')    
-    plt.xlabel("time", fontsize=20)
-    plt.ylabel("energy", fontsize=20)
+    plt.xlabel("time [s]", fontsize=20)
+    plt.ylabel("energy [MJ]", fontsize=20)
     plt.tick_params(labelsize=18)
     plt.legend(fontsize=18, frameon=False)
     plt.savefig(get_file_path('pdf', 'energy'), bbox_inches='tight')
@@ -172,8 +177,8 @@ def plot_disp(ts, ks):
     step = (len(ts) - 1) // 50
     plt.figure()
     plt.plot(ts[::step], ks[::step], marker='o',  markersize=2, linestyle="-", linewidth=1, color='black')
-    plt.xlabel("time", fontsize=20)
-    plt.ylabel("kinetic energy", fontsize=20)
+    plt.xlabel("time [s]", fontsize=20)
+    plt.ylabel("kinetic energy [MJ]", fontsize=20)
     plt.tick_params(labelsize=18)
     plt.savefig(get_file_path('pdf', 'disp'), bbox_inches='tight')
 
