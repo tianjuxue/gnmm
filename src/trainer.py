@@ -81,7 +81,7 @@ def shuffle_data(data):
     train_data = data[inds_train]
     validation_data = data[inds_validation]
     test_data = data[inds_test]
-    train_loader = DataLoader(EnergyDataset(train_data), batch_size=args.batch_size, shuffle=False)
+    train_loader = DataLoader(EnergyDataset(train_data), batch_size=args.batch_size, shuffle=False) # For training, shuffle can be True
     validation_loader = DataLoader(EnergyDataset(validation_data), batch_size=args.batch_size, shuffle=False)
     test_loader = DataLoader(EnergyDataset(test_data), batch_size=args.batch_size, shuffle=False)
     return train_data, validation_data, test_data, train_loader, validation_loader, test_loader

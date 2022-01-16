@@ -156,11 +156,11 @@ def plot_dynamics(ys, graph, gn_n_cols, gn_n_rows, limits=((0.24, 0.24), (0.24, 
     os.system('ffmpeg -y -framerate 25 -i data/png/tmp/%05d.png -pix_fmt yuv420p -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" ' + get_file_path('mp4'))
 
 
-def plot_energy(ts, hamiltonians, kinetic_energies):
+def plot_energy(ts, hamiltonians, kinetic_energies, inverval=50):
     # plt.figure(num=10, figsize=(6, 6))
     assert len(hamiltonians) == len(kinetic_energies) and len(ts) == len(hamiltonians), f"{len(hamiltonians)}, {len(kinetic_energies)} {len(ts)}"
     potential_energies = hamiltonians - kinetic_energies
-    step = (len(ts) - 1) // 50
+    step = (len(ts) - 1) // inverval
     plt.figure()
     plt.plot(ts[::step], hamiltonians[::step], marker='o',  markersize=4, linestyle="-", linewidth=1, color='black', label='total')
     plt.plot(ts[::step], kinetic_energies[::step], marker='o',  markersize=4, linestyle="-", linewidth=1, color='red', label='kinetic')
@@ -172,9 +172,9 @@ def plot_energy(ts, hamiltonians, kinetic_energies):
     plt.savefig(get_file_path('pdf', 'energy'), bbox_inches='tight')
 
 
-def plot_disp(ts, ks):
+def plot_disp(ts, ks, inverval=50):
     assert len(ts) == len(ks), f"{len(ts), {len(ks)}}"
-    step = (len(ts) - 1) // 50
+    step = (len(ts) - 1) // inverval
     plt.figure()
     plt.plot(ts[::step], ks[::step], marker='o',  markersize=2, linestyle="-", linewidth=1, color='black')
     plt.xlabel("time [s]", fontsize=20)
@@ -183,20 +183,21 @@ def plot_disp(ts, ks):
     plt.savefig(get_file_path('pdf', 'disp'), bbox_inches='tight')
 
 
-# def plot_force(hamiltonians, disps, file_path):
-#     '''
-#     This is a buggy version that doesn't consider dissipation - to be fixed
-#     '''
-#     assert len(hamiltonians) == len(disps), f"{len(hamiltonians)} not eual to {len(disps)}"
-#     disps_ = np.diff(disps)
-#     hamiltonians_ = np.diff(hamiltonians)
-#     forces = np.hstack((0., np.where(disps_ > 0., hamiltonians_/disps_, 0.)))
-#     plt.figure()
-#     plt.plot(disps, forces, marker='o',  markersize=2, linestyle="-", linewidth=1, color='black')
-#     plt.xlabel("displacement")
-#     plt.ylabel("force")
-#     plt.tick_params(labelsize=14)
-#     plt.savefig(file_path)
+def plot_force(ts, hamiltonians, kinetic_energies, inverval=50):
+    '''
+    This is a buggy version that doesn't consider dissipation - to be fixed
+    '''
+    step = (len(ts) - 1) // inverval
+    ts = ts[::step]
+    hamiltonians = hamiltonians[::step]
+    kinetic_energies = kinetic_energies[::step]
+    forces = np.hstack((0., np.diff(hamiltonians - kinetic_energies)))
+    plt.figure()
+    plt.plot(ts, forces, marker='o',  markersize=2, linestyle="-", linewidth=1, color='black')
+    plt.xlabel("TBD")
+    plt.ylabel("force")
+    plt.tick_params(labelsize=14)
+    # plt.savefig(file_path)
 
 
 def walltime(func):

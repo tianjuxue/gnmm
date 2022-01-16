@@ -1,5 +1,5 @@
 '''
-Instructions
+This script produces figures used in the manuscript
 '''
 
 import numpy as onp
@@ -15,7 +15,7 @@ from src.fem_commons import *
 from src.dns import dns_solve_implicit_euler
 from src.beam import fem_solve
 from src.trainer import mlp_surrogate, jax_gpr_surrogate, load_data, shuffle_data, evaluate_errors
-from src.utils import plot_energy, plot_dynamics, plot_disp
+from src.utils import plot_energy, plot_dynamics, plot_disp, plot_force
 from src.graph_net import simulate, build_graph, build_bc_inds, hamiltonian, get_cross_energy, odeint, leapfrog
 
 PLATFORM = jax.lib.xla_bridge.get_backend().platform
@@ -42,6 +42,48 @@ def overview():
     uv_top_y = compute_uv_bc_vals(ts, bc_excitation_impulse, args.dns_n_rows)
     uv_list = [None, uv_bottom_y, None, uv_top_y]
     dns_solve_implicit_euler(*get_shape_params(), uv_list, ts)
+
+
+def crying_face():
+    '''
+    Produce figure 'abstract' in the manuscript
+    '''
+    args.shape_tag = 'beam'
+
+    args.gn_n_cols = 33
+    args.gn_n_rows = 33
+    args.gn_damping = 5*1e-4
+    args.coef = 2
+    args.amp = 0.1
+
+    args.pore_id = 'poreE'
+    args.description = 'crying_face'
+
+    # 哭脸
+    # args.deactivated_nodes = [(5, 12), (5, 13), (5, 14), (5, 15), (5, 16), (5, 17), (5, 18), (5, 19), (5, 20),
+    #                           (6, 12), (6, 13), (6, 14), (6, 15), (6, 16), (6, 17), (6, 18), (6, 19), (6, 20),
+    #                           (22, 21), (22, 22), (22, 23), (22, 24),
+    #                           (23, 21), (23, 22), (23, 23), (23, 24),
+    #                           (22, 11), (22, 10), (22, 9), (22, 8),
+    #                           (23, 11), (23, 10), (23, 9), (23, 8)]
+
+    # 笑脸
+    args.deactivated_nodes = [(5, 11), (5, 12), (5, 13), (5, 14), (5, 15), (5, 16), (5, 17), (5, 18), (5, 19), (5, 20), (5, 21),
+                              (22, 21), (22, 22), (22, 23), (22, 24), (22, 25),
+                              (22, 11), (22, 10), (22, 9), (22, 8), (22, 7)]
+
+    dt = 1e-3
+    ts = np.arange(0, 1001*dt, dt)
+
+    fix_bc = compute_uv_bc_vals(ts, bc_excitation_fixed, args.gn_n_rows) 
+    impulse_bc = compute_uv_bc_vals(ts, bc_excitation_impulse, args.gn_n_rows)
+    uv_top_x = fix_bc
+    uv_top_y = impulse_bc 
+    uv_bottom_x = fix_bc
+    uv_bottom_y = fix_bc
+    uv_list = [uv_bottom_x, uv_bottom_y, None, uv_top_x, uv_top_y, None]
+    ys, hamitonians, kinetic_energies, graph = simulate(uv_list, ts)
+    plot_dynamics(ys[::10], graph, args.gn_n_cols, args.gn_n_rows, pdf_frames=[100])
 
 
 def beam():
@@ -176,7 +218,6 @@ def energy_countours():
     plt.savefig(get_file_path('pdf', ['contour', 'contour']), bbox_inches='tight')
 
 
-
 def pred_true_plot():
     '''
     Produce figure 'pred_true' in the manuscript
@@ -244,7 +285,8 @@ def statics_dns():
     args.dns_n_cols = 8
     args.dns_damping = 10*1e-3
     args.coef = 1
-
+    args.amp = 0.1
+    args.dns_dynamics = False # Change this to True for a dynamics simulation with damping
     dt = 1e-2
     ts = np.arange(0, 101*dt, dt)
 
@@ -266,6 +308,10 @@ def statics_dns():
                 uv_top_y = compute_uv_bc_vals(ts, bc_excitation_impulse, args.dns_n_rows)
                 uv_list = [uv_bottom_x, uv_bottom_y, uv_top_x, uv_top_y]
                 dns_solve_implicit_euler(*get_shape_params(), uv_list, ts)
+            ts, hamitonians, kinetic_energies, cross_energies =  onp.load(get_file_path('numpy', 'energy'))
+            plot_energy(ts, hamitonians, kinetic_energies)
+            print(f"{args.pore_id}, {descriptions[j]}, h = {hamitonians[-1]}")
+            # plot_force(ts, hamitonians, kinetic_energies) 
 
 
 def statics_gn():
@@ -276,7 +322,7 @@ def statics_gn():
     args.gn_n_rows = 8
     args.gn_damping = 2*1e-3
     args.coef = 1
-
+ 
     dt = 1e-3
     ts = np.arange(0, 1001*dt, dt)
 
@@ -291,13 +337,105 @@ def statics_gn():
             args.amp = amps[j]
             args.description = descriptions[j]
 
+            compute = False
+            if compute:
+                uv_bottom_x = compute_uv_bc_vals(ts, bc_excitation_fixed, args.gn_n_rows)
+                uv_bottom_y = compute_uv_bc_vals(ts, bc_excitation_fixed, args.gn_n_rows)    
+                uv_top_x = compute_uv_bc_vals(ts, bc_excitation_fixed, args.gn_n_rows)
+                uv_top_y = compute_uv_bc_vals(ts, bc_excitation_impulse, args.gn_n_rows)
+                uv_list = [uv_bottom_x, uv_bottom_y, None, uv_top_x, uv_top_y, None]
+                ys, hamitonians, kinetic_energies, graph = simulate(uv_list, ts)
+                cross_energies = get_cross_energy(ys, onp.arange(args.gn_n_cols)) 
+                energies = onp.stack((ts, hamitonians, kinetic_energies, cross_energies))
+                onp.save(get_file_path('numpy', 'energy'), energies)
+            ts, hs, ks, cross_energies = onp.load(get_file_path('numpy', 'energy'))
+            # plot_energy(ts, hs, ks)        
+            plot_force(ts, hs, ks)   
+            # plot_dynamics(ys[::10], graph, args.gn_n_cols, args.gn_n_rows, pdf_frames=[0, 100])
+
+
+def statics_gn_stress_strain():
+    '''
+    Not working
+    '''
+    args.gn_n_cols = 8
+    args.gn_n_rows = 8
+    args.gn_damping = 1e-3
+    dt = 1e-3
+    ts = np.arange(0, 1001*dt, dt)
+
+    args.shape_tag = 'beam'
+    args.pore_id = 'poreA'
+
+    args.description = 'statics_cmp_stress_strain'
+
+    amps = np.linspace(0, 0.1, 21)
+
+    compute = False
+    if compute:
+        hs = []
+        ks = []
+        cs = []
+        for i in range(len(amps)):
+            args.amp = amps[i]
             uv_bottom_x = compute_uv_bc_vals(ts, bc_excitation_fixed, args.gn_n_rows)
             uv_bottom_y = compute_uv_bc_vals(ts, bc_excitation_fixed, args.gn_n_rows)    
             uv_top_x = compute_uv_bc_vals(ts, bc_excitation_fixed, args.gn_n_rows)
-            uv_top_y = compute_uv_bc_vals(ts, bc_excitation_impulse, args.gn_n_rows)
+            uv_top_y = compute_uv_bc_vals(ts, bc_excitation_nonzero_fixed, args.gn_n_rows)
             uv_list = [uv_bottom_x, uv_bottom_y, None, uv_top_x, uv_top_y, None]
-            ys, hamitonians, kinetic_energies, graph = simulate(uv_list, ts)
-            plot_dynamics(ys[::10], graph, args.gn_n_cols, args.gn_n_rows, pdf_frames=[0, 100])
+            if i == 0:
+                ys, hamitonians, kinetic_energies, graph = simulate(uv_list, ts)
+            else:
+                ys, hamitonians, kinetic_energies, graph = simulate(uv_list, ts, y0)
+            cross_energies = get_cross_energy(ys, onp.arange(args.gn_n_cols))
+            y0 = ys[-1]
+            print(f"Step {i}, amp = {amps[i]} h = {hamitonians[-1]}, k = {kinetic_energies[-1]}")
+            hs.append(hamitonians[-1])
+            ks.append(kinetic_energies[-1])
+            cs.append(cross_energies[-1])
+
+        energies = onp.stack((np.arange(len(hs)), np.array(hs),  np.array(ks), np.array(cs)))
+        onp.save(get_file_path('numpy', 'energy'), energies)
+
+    ts, hs, ks, cross_energies = onp.load(get_file_path('numpy', 'energy'))
+    plot_energy(ts, hs, ks, inverval=20)        
+    plot_force(ts, hs, ks, inverval=20)   
+ 
+
+
+def plot_statics():
+    '''
+    Not working
+    '''
+    args.pore_id = 'poreA'
+
+    args.gn_n_cols = 8
+    args.gn_n_rows = 8
+    args.shape_tag = 'beam'
+    args.description = 'statics_cmp_stress_strain'
+    _, hs_gn, _, _ = onp.load(get_file_path('numpy', 'energy'))    
+
+    args.dns_n_rows = 8
+    args.dns_n_cols = 8
+    args.shape_tag = 'dns'
+    args.description = 'statics_cmp'
+    _, hs_dns, _, _ = onp.load(get_file_path('numpy', 'energy'))
+
+    plt.figure()
+    plt.plot(hs_gn, marker='o',  markersize=2, linestyle="-", linewidth=1, color='blue', label='gn')
+    plt.plot(hs_dns[::5], marker='o',  markersize=2, linestyle="-", linewidth=1, color='red', label='dns')
+    plt.legend()
+    plt.xlabel("TBD")
+    plt.ylabel("energy")
+    plt.tick_params(labelsize=14)
+
+    plt.figure()
+    plt.plot(np.diff(hs_gn), marker='o',  markersize=2, linestyle="-", linewidth=1, color='blue', label='gn')
+    plt.plot(np.diff(hs_dns)[::5], marker='o',  markersize=2, linestyle="-", linewidth=1, color='red', label='dns')
+    plt.xlabel("TBD")
+    plt.ylabel("force")
+    plt.legend()
+    plt.tick_params(labelsize=14)
 
 
 def wave_dns():
@@ -353,7 +491,7 @@ def wave_gn():
         energies = onp.stack((ts, hamitonians, kinetic_energies, cross_energies))
         onp.save(get_file_path('numpy', 'energy'), energies)
         pdf_frames = onp.arange(0, len(ts), 10) if pore_id == 'poreA' else None
-        plot_dynamics(ys[::10], graph, args.gn_n_cols, args.gn_n_rows, ((0.5, 0.5), (0.45, 0.1)), pdf_frames=pdf_frames)
+        plot_dynamics(ys[::10], graph, args.gn_n_cols, args.gn_n_rows, ((0.5, 0.5), (0.4, 0.1)), pdf_frames=pdf_frames)
         plot_disp(ts, cross_energies)
 
 
@@ -535,13 +673,6 @@ def hierarchy():
 
     args.amp = 0.05
 
-    # 哭脸
-    # args.deactivated_nodes = [(5, 13), (5, 14), (5, 15), (5, 16), (5, 17), (5, 18),
-    #                      (22, 21), (22, 22), (22, 23),
-    #                      (22, 10), (22, 9), (22, 8)]
-
-    # args.deactivated_nodes = [(2, 2), (2, 6), (2, 10), (2, 14)]
-
     dt = 1e-3
     ts = np.arange(0, 2001*dt, dt)
 
@@ -551,9 +682,9 @@ def hierarchy():
     uv_bottom_x = fix_bc
     uv_bottom_y = fix_bc
 
-    pore_ids = ['poreA', 'poreB', 'poreC', 'poreD', 'poreE']
+    # pore_ids = ['poreA', 'poreB', 'poreC', 'poreD', 'poreE']
 
-    # pore_ids = ['poreA']
+    pore_ids = ['poreA']
     modes = ['shear']
     defects = [0, 2]
 
@@ -579,19 +710,18 @@ def hierarchy():
                                 args.deactivated_nodes.append((col, row))
 
                 uv_list = [None, uv_bottom_y, None, uv_top_x, uv_top_y, None]
-                # uv_list = [None, None, None, uv_top_x, uv_top_y, None]
-
+ 
                 ys, hamitonians, kinetic_energies, graph = simulate(uv_list, ts)
                 cross_energies = get_cross_energy(ys, onp.arange(args.gn_n_cols)) 
                 energies = onp.stack((ts, hamitonians, kinetic_energies, cross_energies))
-                onp.save(get_file_path('numpy', 'energy'), energies)
+                # onp.save(get_file_path('numpy', 'energy'), energies)
 
-                ts, hs, ks, cross_energies =  onp.load(get_file_path('numpy', 'energy'))
-                plot_energy(ts, hs, ks)
-                plot_disp(ts, cross_energies)
+                # ts, hs, ks, cross_energies =  onp.load(get_file_path('numpy', 'energy'))
+                # plot_energy(ts, hs, ks)
+                # plot_disp(ts, cross_energies)
                 if args.pore_id == 'poreA':
                     pdf_frames = onp.arange(0, len(ts), 10)
-                    plot_dynamics(ys[::10], graph, args.gn_n_cols, args.gn_n_rows, limits=((1.5, 1.5), (0.18, 0.18)), pdf_frames=pdf_frames)
+                    plot_dynamics(ys[::10], graph, args.gn_n_cols, args.gn_n_rows, limits=((0.5, 0.5), (0.1, 0.1)), pdf_frames=pdf_frames)
 
 
 def S_wave_bulk():
@@ -605,7 +735,7 @@ def S_wave_bulk():
     dt = 1e-2
     ts = np.arange(0, 201*dt, dt)
 
-    args.T = 0.2
+    args.T = 0.2 # This is not 0.2s, but 20% of the total integration time, which is actually 0.4s
     fix_bc = compute_uv_bc_vals(ts, bc_excitation_fixed, args.bulk_n_rows) 
     sin_bc = compute_uv_bc_vals(ts, bc_excitation_sin, args.bulk_n_rows)
     uv_bottom_x = fix_bc
@@ -628,7 +758,7 @@ def plot_S_wave():
     args.gn_n_cols = 17
     args.gn_n_rows = 65
     args.bulk_n_cols = 17
-    args.bulk_n_rows = 129
+    args.bulk_n_rows = 65
     pore_ids = ['poreA', 'poreB', 'poreC', 'poreD', 'poreE']
     colors = ['red', 'blue', 'green', 'orange', 'purple']
     markers = ['o', 's', '^', 'h', 'p']
@@ -672,17 +802,6 @@ def plot_S_wave():
     args.shape_tag = 'bulk'
     args.description = 'S_wave'
     ts, _, _, cross_energies = onp.load(get_file_path('numpy', 'energy'))
-    # step = (len(ts) - 1) // 50
-    # truncate =  int((len(ts) - 1) * 0.25)
-    # plt.figure(figsize=(8, 6))
-    # plt.plot(ts[:truncate:step], cross_energies[:truncate:step], marker='o',  markersize=5, 
-    #     linestyle="-", linewidth=1, color='black', label='bulk')
-    # plt.xlabel("time [s]", fontsize=20)
-    # plt.ylabel("kinetic energy [MJ]", fontsize=20)
-    # plt.tick_params(labelsize=18)  
-    # plt.legend(fontsize=18, frameon=False)     
-    # # plt.ylim(-0.03, 1.15)
-    # plt.savefig(get_file_path('pdf', 'disp'), bbox_inches='tight')
 
     bulk_vel = wave_travelled_dist / get_criticial_time(ts, cross_energies)
     print(f"bulk material S wave velocity = {bulk_vel}")
@@ -704,6 +823,7 @@ def plot_S_wave():
 
 if __name__ == '__main__':
     # overview()
+    # crying_face()
     # beam()
     # train_val_test()
     # energy_countours()
@@ -712,13 +832,15 @@ if __name__ == '__main__':
     # show_gpr_params()
     # statics_dns()
     # statics_gn()
+    # statics_gn_stress_strain()
+    # plot_statics()
     # wave_dns()
     # wave_gn()
     # plot_wave()
     # evaluate_performance_dns()
     # evaluate_performance_gn()
     # plot_performance()
-    # hierarchy()
+    hierarchy()
     # S_wave_bulk()
-    plot_S_wave()
-    plt.show()
+    # plot_S_wave()
+    # plt.show()

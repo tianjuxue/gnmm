@@ -102,6 +102,10 @@ def bc_excitation_sin(t_frac):
     return np.sin(2*np.pi/T*t_frac)
 
 
+def bc_excitation_nonzero_fixed(t_frac):
+    return np.ones_like(t_frac)
+
+
 def compute_uv_bc_vals(ts, bc_activation_fn, n_rows):
     t_frac = ts / ts[-1]
     disps = -args.amp * bc_activation_fn(t_frac) * n_rows * args.L0 

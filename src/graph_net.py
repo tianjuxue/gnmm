@@ -127,7 +127,6 @@ def build_graph():
         in_matrix = this_col >= 0 and this_col <= gn_n_cols - 1 and this_row >= 0 and this_row <= gn_n_rows - 1
         defect = (this_col, this_row) in args.deactivated_nodes
         return in_matrix and not defect
-
     
     # TODO: the double for-loop is slow for large size of structure - need to optimize the code
     inds_lookup = []
@@ -266,13 +265,19 @@ def get_cross_energy(ys, inds):
     return ks
 
 
-def simulate(uv_list, ts):
+def simulate(uv_list, ts, y0=None):
     graph, ini_state, inds_lookup = build_graph()
     bc_inds_x_list, bc_inds_y_list = build_bc_inds(inds_lookup)
     compute_kinetic_energy, compute_hamiltonian, state_rhs = hamiltonian(graph)
     bcs = [bc_inds_x_list, bc_inds_y_list, uv_list, ini_state]
-    ys_ = odeint(leapfrog, bcs, state_rhs, ini_state, ts)
-    ys = np.vstack((ini_state[None, :], ys_))
+
+    if y0 is not None:
+        ys_ = odeint(leapfrog, bcs, state_rhs, y0, ts)
+        ys = np.vstack((y0[None, :], ys_))
+    else:
+        ys_ = odeint(leapfrog, bcs, state_rhs, ini_state, ts)
+        ys = np.vstack((ini_state[None, :], ys_))        
+
     vmap_hamitonian = jax.jit(jax.vmap(compute_hamiltonian))
     vmap_kinetic_energy = jax.jit(jax.vmap(compute_kinetic_energy))
     hamitonians = vmap_hamitonian(ys)

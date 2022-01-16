@@ -137,20 +137,24 @@ def dns_solve_implicit_euler(c1, c2, uv_list, ts, save_files=True):
             uv_loads.append([u_load, v_load])
 
     bcs = build_bcs(uv_list, uv_bcs)
-
     dt = float(ts[1] - ts[0])
     theta = 0.5
     u_rhs = theta*u_pre + (1 - theta)*u_crt
     v_rhs = theta*v_pre + (1 - theta)*v_crt
-    strain_energy_density, PK_stress = NeoHookeanEnergy(u_rhs)
 
-    if args.dns_damping == 0.:
-        v_res = args.density * fe.dot(v_crt - v_pre, v_test) * fe.dx + dt * fe.inner(PK_stress, fe.grad(v_test)) * fe.dx
+    if args.dns_dynamics:
+
+        strain_energy_density, PK_stress = NeoHookeanEnergy(u_rhs)
+        if args.dns_damping == 0.:
+            v_res = args.density * fe.dot(v_crt - v_pre, v_test) * fe.dx + dt * fe.inner(PK_stress, fe.grad(v_test)) * fe.dx
+        else:
+            v_res = args.density * fe.dot(v_crt - v_pre, v_test) * fe.dx + dt * fe.inner(PK_stress, fe.grad(v_test)) * fe.dx + \
+                    dt * args.dns_damping * fe.dot(v_rhs, v_test) * fe.dx       
+        u_res = fe.dot(u_crt - u_pre, u_test) * fe.dx - dt * fe.dot(v_rhs, u_test) * fe.dx
     else:
-        v_res = args.density * fe.dot(v_crt - v_pre, v_test) * fe.dx + dt * fe.inner(PK_stress, fe.grad(v_test)) * fe.dx + \
-                dt * args.dns_damping * fe.dot(v_rhs, v_test) * fe.dx       
-
-    u_res = fe.dot(u_crt - u_pre, u_test) * fe.dx - dt * fe.dot(v_rhs, u_test) * fe.dx
+        strain_energy_density, PK_stress = NeoHookeanEnergy(u_crt)
+        u_res = fe.inner(PK_stress, fe.grad(u_test)) * fe.dx
+        v_res = fe.dot(v_crt, v_test) * fe.dx
 
     xdmf_file = fe.XDMFFile(get_file_path('xdmf'))
     xdmf_file.parameters["functions_share_mesh"] = True
