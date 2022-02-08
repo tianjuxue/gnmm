@@ -1,6 +1,6 @@
 # Metamaterial Graph Network (MGN)
 
-This repository contains an implementation of our manuscript "Graph networks for dynamical simulation of cellular mechanical metamaterials under finite deformation". Here is an overview of the method:
+This repository contains an implementation of our manuscript "Learning the nonlinear elastodynamics of soft cellular mechanical metamaterials with graph networks". Here is an overview of the method:
 
 <p align="center">
   <img src="https://user-images.githubusercontent.com/45647025/153072829-37ce7049-2a47-45c2-ae9a-715d35a374b9.png">
