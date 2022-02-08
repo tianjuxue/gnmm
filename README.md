@@ -3,9 +3,8 @@
 This repository contains an implementation of our manuscript "Learning the nonlinear elastodynamics of soft cellular mechanical metamaterials with graph networks". Here is an overview of the method:
 
 <p align="center">
-  <img src="https://user-images.githubusercontent.com/45647025/153072829-37ce7049-2a47-45c2-ae9a-715d35a374b9.png">
+  <img src="https://user-images.githubusercontent.com/45647025/153073940-d115fd3f-fa32-423f-ab91-b7994e04c8c5.png">
 </p>
-
 
 There are three major steps: 1. Collect ground truth data by performing finite element simulation via _FEniCS_; 2. Train a graph network enabled by either a neural network or a Gaussian process regression model via _JAX_; 3. Deploy the trained graph network for dynamical simulation via _JAX_.
 
