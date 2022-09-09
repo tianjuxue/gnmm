@@ -58,7 +58,10 @@ def get_bcs(time_index, bcs):
             val_len = len(bc_inds_x_list[bc_index])//2
             bc_vals = bc_vals + [float(bc_val_disp)]*val_len + [float(bc_val_vel)]*val_len
 
-    bc_inds = jax.ops.index[bc_inds_x, bc_inds_y]
+    bc_inds_x = np.array(bc_inds_x)
+    bc_inds_y = np.array(bc_inds_y)
+
+    bc_inds = (bc_inds_x, bc_inds_y)
     bc_vals = ini_state[bc_inds] + np.array(bc_vals)
 
     return bc_inds, bc_vals
@@ -93,7 +96,8 @@ def odeint(stepper, bcs, f, y0, ts, *diff_args):
 
     def stepper_partial(state, t_crt):
         (y_crt, t_crt), _ = stepper(state, t_crt, f, *diff_args)
-        y_crt = jax.ops.index_update(y_crt, bc_inds, bc_vals)
+        # y_crt = jax.ops.index_update(y_crt, bc_inds, bc_vals) # The old JAX syntax, should be deprecated
+        y_crt = y_crt.at[bc_inds].set(bc_vals)
         return (y_crt, t_crt), y_crt
 
     # _, ys = jax.lax.scan(stepper_partial, (y0, ts[0]), ts[1:])

@@ -1,8 +1,31 @@
-def dns_solve_viscoelasticity(c1, c2):
+import fenics as fe
+import numpy as onp
+import os
+import matplotlib.pyplot as plt
+from src.arguments import args
+from src.fem_commons import *
+from src.dns import build_mesh_and_boundaries_porous, build_mesh_and_boundaries_bulk
+from src.utils import plot_energy, plot_dynamics
+from src.graph_net import simulate
+
+
+def boundary_excitation_impulse(dt, t_steps, coef):
+    ts = onp.arange(0, (t_steps + 1)*dt, dt)
+    alpha = ts / ts[-1]
+    bc_activation = onp.where(alpha < 1./coef, coef*alpha, 1.)
+    disps = 0.1 * bc_activation * args.dns_n_rows * args.L0 
+    vels = onp.hstack((0., onp.diff(disps)))
+    return ts, disps, vels
+
+
+def dns_solve_viscoelasticity():
     '''
     这个函数介绍了viscoelasticity的解法，仅做参考意义，并未在gnmm这个项目中实际使用
     '''
-    mesh, (bottom, top, left_corner) = build_mesh_and_boundaries_bulk()    
+
+    # mesh, (bottom, top, left_corner), _ = build_mesh_and_boundaries_bulk()   
+    mesh, (bottom, top, left_corner), _ = build_mesh_and_boundaries_porous(*get_shape_params())   
+
     U = fe.VectorElement('CG', mesh.ufl_cell(), 1)  
     W = fe.VectorElement('CG', mesh.ufl_cell(), 1)
     Q = fe.TensorElement('DG', mesh.ufl_cell(), 0)
@@ -41,14 +64,21 @@ def dns_solve_viscoelasticity(c1, c2):
     v_rhs = theta*v_pre + (1 - theta)*v_crt
     Fi_rhs = theta*Fi_pre + (1 - theta)*Fi_crt
 
-    ts, disps, vels = boundary_excitation_impulse(dt=1e-2, t_steps=1000, coef=10)
+    ts, disps, vels = boundary_excitation_impulse(dt=1e-3, t_steps=100, coef=10)
     dt = ts[1] - ts[0]
 
-    kappa = 10.
-    mu = 1.
-    beta = 0.5 
+
+    young_modulus = args.young_modulus
+    poisson_ratio = args.poisson_ratio
+    shear_mod = young_modulus / (2 * (1 + poisson_ratio))
+    bulk_mod = young_modulus / (3 * (1 - 2*poisson_ratio))
+
+    kappa = bulk_mod
+    mu = shear_mod
+
+    beta = 0.5
     tau = 0.1
-    damping_coeff = 0.001
+
     density = 1e-3
 
     def Uiso(F, mu):
@@ -108,9 +138,10 @@ def dns_solve_viscoelasticity(c1, c2):
     xdmf_file.parameters["functions_share_mesh"] = True
 
     nondissipative_energies = []
+    kinetic_energies = []
 
     for i, t in enumerate(ts[1:]):
-        print(f"\nStep {i}")
+        print(f"\nStep {i} in {len(ts[1:])}")
 
         if i % 1 == 0:
             u_plot, v_plot, Fi_plot = m_pre.split()
@@ -128,11 +159,105 @@ def dns_solve_viscoelasticity(c1, c2):
         m_pre.assign(m_crt)
 
         nondissipative_energy_val = fe.assemble(nondissipative_energy)
+        kinetic_energy_val = fe.assemble(kinetic_energy)
         nondissipative_energies.append(nondissipative_energy_val)
+        kinetic_energies.append(kinetic_energy_val)
         print(f"nondissipative_energy_val = {nondissipative_energy_val}")
 
     fig = plt.figure()
     plt.plot(nondissipative_energies, linestyle='-', marker='o', color='black')
+    plt.plot(kinetic_energies, linestyle='-', marker='o', color='red')
     plt.tick_params(labelsize=14)
+    plt.savefig(get_file_path('pdf', 'debug_dns'), bbox_inches='tight')
     plt.show()
+
+
+def viscous_dns():
+    args.pore_id = 'poreA'
+    args.shape_tag= 'viscosity'
+    args.description = 'debug_dns'
+    args.dns_n_rows = 4
+    args.dns_n_cols = 4
+    dns_solve_viscoelasticity()
+
+
+def viscous_gn(gn_damping, name):
+    """Revision of IJMS
+    """
+    args.shape_tag = 'beam'    
+    args.description = 'viscosity_gn'
+    args.gn_n_cols = 4
+    args.gn_n_rows = 4
+    args.coef = 10
+    args.amp = -0.1
+    args.gn_damping = gn_damping
+    dt = 1e-4
+    ts = np.arange(0, 1001*dt, dt)
+    args.pore_id = 'poreA'
+    uv_bottom_x = compute_uv_bc_vals(ts, bc_excitation_fixed, args.gn_n_rows)
+    uv_bottom_y = compute_uv_bc_vals(ts, bc_excitation_fixed, args.gn_n_rows)    
+    uv_top_x = compute_uv_bc_vals(ts, bc_excitation_fixed, args.gn_n_rows)
+    uv_top_y = compute_uv_bc_vals(ts, bc_excitation_impulse, args.gn_n_rows)
+    uv_list = [uv_bottom_x, uv_bottom_y, None, uv_top_x, uv_top_y, None]
+    ys, hamitonians, kinetic_energies, graph = simulate(uv_list, ts)
+
+    pdf_frames = onp.arange(0, len(ts), 10)
+    plot_dynamics(ys[::10], graph, args.gn_n_cols, args.gn_n_rows, ((0.2, 0.2), (0.2, 0.4)), pdf_frames=pdf_frames)
+
+    args.shape_tag = 'viscosity'
+    onp.save(get_file_path('numpy', name), onp.stack((ts, uv_top_y[0], hamitonians, kinetic_energies)))
+
+
+def plot_viscosity_gn():
+    """Revision of IJMS
+    """
+    name1 = 'no_viscosity'
+    name2 = 'viscosity'
+    compute = True
+    if compute:
+        viscous_gn(0., name1)
+        viscous_gn(1e-2, name2)
+
+    args.shape_tag = 'viscosity'
+    ts1, disps1, hamitonians1, kinetic_energies1 = onp.load(get_file_path('numpy', name1))
+    ts2, disps2, hamitonians2, kinetic_energies2 = onp.load(get_file_path('numpy', name2))
+
+    fig = plt.figure()
+    plt.plot(ts1, hamitonians1, linestyle='-', linewidth=2.5, color='black', label='total energy')
+    plt.plot(ts1, kinetic_energies1, linestyle='-', linewidth=2, color='red', label='kinetic energy')
+    plt.legend(fontsize=18, frameon=False)
+    plt.xlabel("time [s]", fontsize=18)
+    plt.ylabel("energy [MJ]", fontsize=18)
+    plt.tick_params(labelsize=16)    
+    plt.ylim(-0.03, 0.7)
+    plt.savefig(get_file_path('pdf', 'no_viscosity'), bbox_inches='tight')
+
+    fig = plt.figure()
+    plt.plot(ts2, hamitonians2, linestyle='-', linewidth=2.5, color='black', label='total energy')
+    plt.plot(ts2, kinetic_energies2, linestyle='-', linewidth=2, color='red', label='kinetic energy')
+    plt.legend(fontsize=18, frameon=False)
+    plt.xlabel("time [s]", fontsize=18)
+    plt.ylabel("energy [MJ]", fontsize=18)
+    plt.tick_params(labelsize=16)   
+    plt.ylim(-0.03, 0.7) 
+    plt.savefig(get_file_path('pdf', 'with_viscosity'), bbox_inches='tight')
+
+
+    fig = plt.figure()
+    plt.plot(ts1, disps1, linestyle='-', linewidth=2.5, color='black')
+    plt.legend(fontsize=18, frameon=False)
+    plt.xlabel("time [s]", fontsize=18)
+    plt.ylabel("displacement [m]", fontsize=18)
+    plt.tick_params(labelsize=16)   
+    plt.savefig(get_file_path('pdf', 'disp'), bbox_inches='tight')
+
+    plt.show()
+
+
+
+
+
+if __name__ == '__main__':
+    # viscous_dns()
+    plot_viscosity_gn()
 

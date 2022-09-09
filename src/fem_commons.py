@@ -14,6 +14,8 @@ def get_file_path(file_type, keyword=None):
             return f'data/{file_type}/{args.shape_tag}/u.xdmf'
         if args.shape_tag == 'beam':
             return f'data/{file_type}/{args.shape_tag}/{args.pore_id}/u.xdmf'
+        if args.shape_tag == 'viscosity':
+            return f'data/{file_type}/{args.shape_tag}/u.xdmf'
 
     if file_type == 'pdf':
         if keyword == 'performance' or keyword == 'S_wave':
@@ -33,10 +35,13 @@ def get_file_path(file_type, keyword=None):
             if hasattr(keyword, '__len__'):
                 topic, name = keyword
                 return f"data/{file_type}/{args.shape_tag}/{topic}/{name}.pdf"
+        if args.shape_tag == 'viscosity':
+            return f"data/{file_type}/{args.shape_tag}/{keyword}.pdf"
+
 
     if file_type == 'xml':
         mesh_or_sol, var_name = keyword
-        if args.shape_tag == 'dns':
+        if args.shape_tag == 'dns' or args.shape_tag == 'viscosity':
             return f'data/{file_type}/{mesh_or_sol}/{args.shape_tag}/{args.pore_id}_resolution_{args.resolution}' + \
                    f'_size_{args.dns_n_cols}x{args.dns_n_rows}.xml'
         if args.shape_tag == 'beam':
@@ -46,7 +51,7 @@ def get_file_path(file_type, keyword=None):
         mesh_or_sol, var_name = keyword
         if args.shape_tag == 'beam':
             return f'data/{file_type}/{mesh_or_sol}/{args.shape_tag}/{args.pore_id}/{var_name}.pvd'
-        if args.shape_tag == 'dns':
+        if args.shape_tag == 'dns' or args.shape_tag == 'viscosity':
             return f'data/{file_type}/{mesh_or_sol}/{args.shape_tag}/{args.pore_id}_resolution_{args.resolution}_' + \
                    f'size_{args.dns_n_cols}x{args.dns_n_rows}_description_{args.description}/{var_name}.pvd'
         if args.shape_tag == 'bulk':
@@ -77,6 +82,8 @@ def get_file_path(file_type, keyword=None):
         if args.shape_tag == 'bulk':
                 return  f'data/{file_type}/{args.shape_tag}/' + \
                         f'_size_{args.bulk_n_cols}x{args.bulk_n_rows}_{keyword}_description_{args.description}.npy'  
+        if args.shape_tag == 'viscosity':
+            return f'data/{file_type}/{args.shape_tag}/{keyword}.npy'
 
     if file_type == 'pickle':
         return f"data/{file_type}/jax_{keyword}_resolution_{args.resolution}_{args.pore_id}.pkl" 
@@ -166,7 +173,7 @@ def build_mesh(c1, c2, shape_key, save_mesh):
                       upper_corner=fe.Point(L0, L0), 
                       n_rows=1, 
                       n_cols=1)      
-    elif shape_key == 'dns':
+    elif shape_key == 'dns' or shape_key == 'viscosity':
         mesh = helper(lower_corner=fe.Point(0., 0.), 
                       upper_corner=fe.Point(args.dns_n_cols*L0, args.dns_n_rows*L0), 
                       n_rows=args.dns_n_rows, 

@@ -154,7 +154,6 @@ def main():
 def exp():
     args.pore_id = 'poreA'
     args.resolution = 10
-    args.pore_id = 'poreA'
     fem_solve(c1=-0., c2=0., rot_angle_1=1*1/5*onp.pi, rot_angle_2=1*1/5*onp.pi, disp=-0.1, save_data=False, save_sols=True)
     # fem_solve(c1=-0.2, c2=0.2, rot_angle_1=-1*1/5*onp.pi, rot_angle_2=1*1/5*onp.pi, disp=-0.1, save_data=False, save_sols=True)
 
